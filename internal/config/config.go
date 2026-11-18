@@ -203,8 +203,42 @@ func (m *Manager) Load() error {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return err
 	}
+	migrated := false
+	def := DefaultConfig()
 	if cfg.Version == 0 {
 		cfg.Version = 1
+		migrated = true
+	}
+	if len(cfg.Providers) == 0 {
+		cfg.Providers = def.Providers
+		var legacy struct {
+			GatewayURL string `json:"gateway_url"`
+			APIKey     string `json:"api_key"`
+			UserEmail  string `json:"user_email"`
+		}
+		if json.Unmarshal(raw, &legacy) == nil && legacy.GatewayURL != "" {
+			for i := range cfg.Providers {
+				if cfg.Providers[i].ID == "daumini" {
+					cfg.Providers[i].BaseURL = legacy.GatewayURL
+					if legacy.APIKey != "" {
+						cfg.Providers[i].APIKey = legacy.APIKey
+					}
+					if legacy.UserEmail != "" {
+						cfg.Providers[i].UserEmail = legacy.UserEmail
+					}
+					break
+				}
+			}
+		}
+		migrated = true
+	}
+	if cfg.DefaultProvider == "" {
+		cfg.DefaultProvider = def.DefaultProvider
+		migrated = true
+	}
+	if cfg.DefaultModel == "" {
+		cfg.DefaultModel = def.DefaultModel
+		migrated = true
 	}
 	if cfg.MaxTurns <= 0 {
 		cfg.MaxTurns = 40
@@ -219,6 +253,9 @@ func (m *Manager) Load() error {
 		cfg.WebAddr = "127.0.0.1:3847"
 	}
 	m.cfg = cfg
+	if migrated {
+		_ = writeAtomicJSON(m.ConfigPath(), cfg, 0o600)
+	}
 	return nil
 }
 
