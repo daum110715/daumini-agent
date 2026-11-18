@@ -6,4 +6,5 @@
 web/node_modules/
 web/.vite/
 bin/
-dist/
+/dist/
+web/dist/
