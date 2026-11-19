@@ -24,6 +24,19 @@ async function apiJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+function normalizeSnapshot(snap: SessionSnapshot): SessionSnapshot {
+  return {
+    ...snap,
+    meta: {
+      ...snap.meta,
+      todos: snap.meta?.todos ?? []
+    },
+    messages: snap.messages ?? [],
+    pending_approvals: snap.pending_approvals ?? [],
+    queued_messages: snap.queued_messages ?? []
+  };
+}
+
 export class AgentController {
   config = $state<AgentConfig | null>(null);
   sessions = $state<SessionMeta[]>([]);
@@ -110,7 +123,7 @@ export class AgentController {
     this.activeStreamThinking = '';
     this.activeTools = {};
     this.filePreview = null;
-    const snap = await apiJSON<SessionSnapshot>(`/api/sessions/${encodeURIComponent(id)}`);
+    const snap = normalizeSnapshot(await apiJSON<SessionSnapshot>(`/api/sessions/${encodeURIComponent(id)}`));
     this.current = snap;
     this.lastSeq = snap.meta.last_seq;
     this.connectSSE(id, snap.meta.last_seq);
@@ -241,7 +254,7 @@ export class AgentController {
 
     const refreshSnap = async () => {
       try {
-        const snap = await apiJSON<SessionSnapshot>(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        const snap = normalizeSnapshot(await apiJSON<SessionSnapshot>(`/api/sessions/${encodeURIComponent(sessionId)}`));
         if (this.current?.meta.id === sessionId) {
           this.current = snap;
           this.lastSeq = snap.meta.last_seq;
@@ -254,7 +267,7 @@ export class AgentController {
 
     es.addEventListener('session.snapshot', (e) => {
       try {
-        const snap = JSON.parse((e as MessageEvent).data) as SessionSnapshot;
+        const snap = normalizeSnapshot(JSON.parse((e as MessageEvent).data) as SessionSnapshot);
         if (this.current?.meta.id === sessionId) {
           this.current = snap;
           this.lastSeq = snap.meta.last_seq;

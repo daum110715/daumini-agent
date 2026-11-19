@@ -198,6 +198,7 @@
 
     <Segmented
       label="主导航"
+      full={true}
       value={tab}
       options={[
         { value: 'work', label: '工作台' },
@@ -285,7 +286,7 @@
 
             <input
               class="field border-line-strong"
-              style="width: 150px; height: 32px;"
+              style="width: 196px; height: 32px;"
               value={ctrl.current.meta.model_id}
               onchange={(e) => void ctrl.updateSession({ model_id: (e.target as HTMLInputElement).value })}
               placeholder="模型 ID"
@@ -325,7 +326,7 @@
       {/if}
 
       <div class="feed" bind:this={feedEl}>
-        {#if ctrl.current && ctrl.current.messages.length === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking}
+        {#if ctrl.current && (ctrl.current.messages?.length ?? 0) === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking}
           <div class="empty-feed">
             <span style="font-size: 28px;"><Wordmark live={false} suffix="" /></span>
             <div style="font-size: 16px;" class="scribble">{ctrl.current.meta.title}</div>
@@ -336,7 +337,7 @@
         {/if}
 
         {#if ctrl.current}
-          {#each ctrl.current.messages as msg (msg.id)}
+          {#each ctrl.current.messages ?? [] as msg (msg.id)}
             {#if msg.role === 'user'}
               {@const textBlocks = (msg.blocks ?? []).filter((b) => b.type === 'text' || b.type === 'system_notice')}
               {#if textBlocks.length > 0}

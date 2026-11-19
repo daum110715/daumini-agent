@@ -6,12 +6,14 @@
     value = $bindable(),
     label,
     size = 'md',
+    full = false,
     onchange
   }: {
     options: { value: T; label: string }[];
     value: T;
     label: string;
     size?: 'sm' | 'md';
+    full?: boolean;
     onchange?: (value: T) => void;
   } = $props();
 
@@ -42,7 +44,7 @@
   });
 </script>
 
-<div role="group" aria-label={label} class="seg-group {size === 'sm' ? 'seg-sm' : ''}">
+<div role="group" aria-label={label} class="seg-group {size === 'sm' ? 'seg-sm' : ''} {full ? 'seg-full' : ''}">
   <span
     bind:this={pillEl}
     aria-hidden="true"
@@ -105,6 +107,14 @@
     color: var(--fg-3);
     font-size: 13px;
     transition: color 0.15s;
+  }
+  .seg-full {
+    display: flex;
+    width: 100%;
+  }
+  .seg-full .seg-btn {
+    flex: 1;
+    text-align: center;
   }
   .seg-sm .seg-btn {
     height: 26px;
