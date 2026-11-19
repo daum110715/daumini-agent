@@ -41,6 +41,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.handleGetConfig)
 	mux.HandleFunc("PUT /api/config", s.handlePutConfig)
 	mux.HandleFunc("POST /api/providers/daumini/login", s.handleDauminiLogin)
+	mux.HandleFunc("POST /api/providers/daumini/logout", s.handleDauminiLogout)
+	mux.HandleFunc("POST /api/providers/daumini/key", s.handleDauminiKey)
 	mux.HandleFunc("GET /api/providers/{id}/models", s.handleProviderModels)
 	mux.HandleFunc("GET /api/mcp", s.handleGetMCP)
 	mux.HandleFunc("POST /api/mcp/reload", s.handleReloadMCP)
@@ -208,6 +210,74 @@ func (s *Server) handleDauminiLogin(w http.ResponseWriter, r *http.Request) {
 				APIKey:    key,
 				UserEmail: in.Email,
 				Enabled:   true,
+			})
+		}
+		c.DefaultProvider = "daumini"
+		return nil
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, config.RedactedConfig(updated))
+}
+
+func (s *Server) handleDauminiLogout(w http.ResponseWriter, _ *http.Request) {
+	updated, err := s.cfgMgr.Update(func(c *config.Config) error {
+		for i := range c.Providers {
+			if c.Providers[i].ID == "daumini" {
+				c.Providers[i].APIKey = ""
+				c.Providers[i].UserEmail = ""
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, config.RedactedConfig(updated))
+}
+
+func (s *Server) handleDauminiKey(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	key := strings.TrimSpace(in.APIKey)
+	if key == "" {
+		writeErr(w, http.StatusBadRequest, "密钥不能为空")
+		return
+	}
+	base := strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
+	if base == "" {
+		base = "https://mini.daum.pw"
+	}
+	updated, err := s.cfgMgr.Update(func(c *config.Config) error {
+		found := false
+		for i := range c.Providers {
+			if c.Providers[i].ID == "daumini" {
+				c.Providers[i].BaseURL = base
+				c.Providers[i].APIKey = key
+				c.Providers[i].Enabled = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.Providers = append(c.Providers, config.ProviderConfig{
+				ID:           "daumini",
+				Name:         "daumini 中转",
+				Protocol:     config.ProtocolDaumini,
+				BaseURL:      base,
+				APIKey:       key,
+				DefaultModel: "deepseek/deepseek-chat",
+				Enabled:      true,
 			})
 		}
 		c.DefaultProvider = "daumini"
@@ -540,35 +610,96 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+func parseDauminiError(status int, body []byte) error {
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &env) == nil {
+		if env.Error.Message != "" {
+			if env.Error.Code != "" {
+				return fmt.Errorf("%s (%s)", env.Error.Message, env.Error.Code)
+			}
+			return fmt.Errorf("%s", env.Error.Message)
+		}
+		if env.Message != "" {
+			return fmt.Errorf("%s", env.Message)
+		}
+	}
+	txt := strings.TrimSpace(string(body))
+	if txt == "" {
+		return fmt.Errorf("HTTP %d", status)
+	}
+	return fmt.Errorf("HTTP %d: %s", status, txt)
+}
+
 func LoginAndMintDauminiKey(ctx context.Context, baseURL, email, password, invite string) (string, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
-	loginBody, _ := json.Marshal(map[string]string{
-		"email":    email,
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		baseURL = "https://mini.daum.pw"
+	}
+	client := &http.Client{Timeout: 20 * time.Second}
+	payload := map[string]string{
+		"email":    strings.TrimSpace(email),
 		"password": password,
-		"invite":   invite,
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/backend/auth/login", bytes.NewReader(loginBody))
+	}
+	if strings.TrimSpace(invite) != "" {
+		payload["invite_code"] = strings.TrimSpace(invite)
+	}
+	loginBody, _ := json.Marshal(payload)
+
+	prefix := "/backend"
+	doLogin := func(path string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(loginBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", baseURL)
+		return client.Do(req)
+	}
+
+	resp, err := doLogin(prefix + "/auth/login")
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		prefix = ""
+		resp, err = doLogin("/auth/login")
+		if err != nil {
+			return "", err
+		}
 	}
 	defer resp.Body.Close()
+	loginRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
 	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("login HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return "", parseDauminiError(resp.StatusCode, loginRaw)
 	}
+
+	var loginData struct {
+		CSRFToken string `json:"csrf_token"`
+	}
+	_ = json.Unmarshal(loginRaw, &loginData)
 	cookies := resp.Cookies()
 
-	keyBody, _ := json.Marshal(map[string]string{"name": "daumini-agent"})
-	kReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/backend/console/v1/keys", bytes.NewReader(keyBody))
+	keyBody, _ := json.Marshal(map[string]any{
+		"name":   "daumini-agent",
+		"kind":   "inference",
+		"scopes": []string{"inference:write", "generations:read"},
+	})
+	kReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+prefix+"/console/v1/keys", bytes.NewReader(keyBody))
 	if err != nil {
 		return "", err
 	}
 	kReq.Header.Set("Content-Type", "application/json")
+	kReq.Header.Set("Origin", baseURL)
+	if loginData.CSRFToken != "" {
+		kReq.Header.Set("X-CSRF-Token", loginData.CSRFToken)
+	}
 	for _, c := range cookies {
 		kReq.AddCookie(c)
 	}
@@ -577,9 +708,9 @@ func LoginAndMintDauminiKey(ctx context.Context, baseURL, email, password, invit
 		return "", err
 	}
 	defer kResp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(kResp.Body, 16384))
+	b, _ := io.ReadAll(io.LimitReader(kResp.Body, 32*1024))
 	if kResp.StatusCode >= 400 {
-		return "", fmt.Errorf("mint key HTTP %d: %s", kResp.StatusCode, strings.TrimSpace(string(b)))
+		return "", parseDauminiError(kResp.StatusCode, b)
 	}
 	var parsed struct {
 		Key   string `json:"key"`
@@ -592,5 +723,5 @@ func LoginAndMintDauminiKey(ctx context.Context, baseURL, email, password, invit
 	if parsed.Token != "" {
 		return parsed.Token, nil
 	}
-	return "", fmt.Errorf("unexpected key response from %s", baseURL)
+	return "", fmt.Errorf("未从 %s 收到有效密钥", baseURL)
 }

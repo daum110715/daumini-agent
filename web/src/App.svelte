@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { AgentController } from './lib/store.svelte';
   import Segmented from './lib/components/Segmented.svelte';
   import Wordmark from './lib/components/Wordmark.svelte';
-  import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ProviderConfig, Usage } from './lib/types';
+  import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ProviderConfig, Run, Usage } from './lib/types';
 
   const ctrl = new AgentController();
 
@@ -13,11 +13,21 @@
   let newWorkspace = $state('.');
   let showNewBox = $state(false);
 
+  // One-click daumini login modal state
+  let showLoginModal = $state(false);
+  let loginMode = $state<'account' | 'key'>('account');
   let dmBase = $state('https://mini.daum.pw');
   let dmEmail = $state('');
   let dmPass = $state('');
-  let dmStatus = $state('');
+  let dmInvite = $state('');
+  let dmShowInvite = $state(false);
+  let dmShowBase = $state(false);
+  let dmKey = $state('');
+  let dmBusy = $state(false);
+  let dmErr = $state('');
+  let dmOk = $state('');
 
+  // Custom provider & MCP form state
   let newProvName = $state('');
   let newProvUrl = $state('');
   let newProvKey = $state('');
@@ -31,9 +41,47 @@
 
   let feedEl = $state<HTMLDivElement | null>(null);
 
-  onMount(() => {
-    void ctrl.bootstrap();
+  // Gliding marker for sidebar navigation (matching daumini SidebarNavigation.svelte)
+  const navItems: { id: 'work' | 'providers' | 'extensions'; label: string }[] = [
+    { id: 'work', label: '工作台' },
+    { id: 'providers', label: '模型' },
+    { id: 'extensions', label: '扩展' }
+  ];
+  let navButtons = $state<HTMLButtonElement[]>([]);
+  let navMarker = $state({ y: 0, h: 0, glide: false });
+  let navPlaced = false;
+
+  $effect(() => {
+    const idx = navItems.findIndex((item) => item.id === tab);
+    const el = navButtons[idx];
+    if (!el) return;
+    navMarker = { y: el.offsetTop, h: el.offsetHeight, glide: navPlaced };
+    if (!navPlaced) {
+      navPlaced = true;
+      void tick().then(() => {
+        navMarker = { ...navMarker, glide: true };
+      });
+    }
   });
+
+  onMount(() => {
+    void ctrl.bootstrap().then(() => {
+      const dm = ctrl.config?.providers.find((p) => p.id === 'daumini');
+      if (dm?.base_url) dmBase = dm.base_url;
+      if (dm?.user_email) dmEmail = dm.user_email;
+      if (dm?.api_key) void ctrl.fetchProviderModels('daumini').catch(() => {});
+    });
+  });
+
+  const dauminiProvider = $derived(ctrl.config?.providers.find((p) => p.id === 'daumini'));
+  const dauminiConnected = $derived(Boolean(dauminiProvider?.api_key));
+  const currentProvider = $derived(
+    ctrl.config?.providers.find((p) => p.id === ctrl.current?.meta.provider_id)
+  );
+  const currentProviderReady = $derived(Boolean(currentProvider?.api_key));
+  const currentModelSuggestions = $derived(
+    ctrl.current ? (ctrl.providerModels[ctrl.current.meta.provider_id] ?? []) : []
+  );
 
   const isRunning = $derived(Boolean(ctrl.current?.meta.active_run_id));
   const pendingApprovals = $derived(
@@ -52,6 +100,28 @@
     return map;
   });
 
+  // Match failed runs to the user message that triggered them so errors never vanish silently
+  const failedRunByRunID = $derived.by(() => {
+    const map: Record<string, Run> = {};
+    for (const r of ctrl.current?.runs ?? []) {
+      if (r.status === 'failed' && r.error) {
+        map[r.id] = r;
+      }
+    }
+    return map;
+  });
+
+  const latestOrphanFailedRun = $derived.by(() => {
+    const runs = ctrl.current?.runs ?? [];
+    if (runs.length === 0) return null;
+    const last = runs[runs.length - 1];
+    if (last.status !== 'failed' || !last.error) return null;
+    const hasAttachedMsg = (ctrl.current?.messages ?? []).some((m) => m.run_id === last.id);
+    return hasAttachedMsg ? null : last;
+  });
+
+  const starters = ['梳理当前项目结构', '检查最近代码改动', '查找并修复潜在问题'];
+
   function withTransition(fn: () => void) {
     const doc = document as Document & { startViewTransition?: (cb: () => void) => void };
     if (doc.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -68,6 +138,13 @@
     });
   }
 
+  function openLoginModal(mode: 'account' | 'key' = 'account') {
+    loginMode = mode;
+    dmErr = '';
+    dmOk = '';
+    showLoginModal = true;
+  }
+
   function cachePct(u?: Usage | null): string {
     if (!u) return '0%';
     const total = (u.input_tokens || 0) + (u.cache_read_tokens || 0) + (u.cache_write_tokens || 0);
@@ -78,6 +155,13 @@
   function totalIn(u?: Usage | null): number {
     if (!u) return 0;
     return (u.input_tokens || 0) + (u.cache_read_tokens || 0) + (u.cache_write_tokens || 0);
+  }
+
+  function fmtNum(n?: number): string {
+    if (!n) return '0';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    return String(n);
   }
 
   function fmtCost(nusd?: number): string {
@@ -92,6 +176,12 @@
     } catch {
       return String(v ?? '');
     }
+  }
+
+  function looksLikeAuthError(msg?: string): boolean {
+    if (!msg) return false;
+    const s = msg.toLowerCase();
+    return s.includes('api_key') || s.includes('api key') || s.includes('missing') || s.includes('401') || s.includes('unauth') || s.includes('密钥');
   }
 
   async function handleSend(mode: 'queue' | 'steer' | 'interrupt' = 'queue') {
@@ -145,13 +235,50 @@
   }
 
   async function doDauminiLogin() {
-    dmStatus = '正在登录并签发密钥';
+    if (!dmEmail.trim() || !dmPass) {
+      dmErr = '请输入邮箱和密码';
+      return;
+    }
+    dmBusy = true;
+    dmErr = '';
+    dmOk = '';
     try {
-      await ctrl.loginDaumini(dmBase, dmEmail, dmPass);
+      await ctrl.loginDaumini(dmBase, dmEmail.trim(), dmPass, dmInvite.trim());
       dmPass = '';
-      dmStatus = '已绑定 daumini 中转密钥';
+      dmOk = '已登录并自动签发密钥';
+      setTimeout(() => {
+        showLoginModal = false;
+      }, 450);
     } catch (e) {
-      dmStatus = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('invalid_invite_code') || msg.includes('beta_invite_required')) {
+        dmShowInvite = true;
+      }
+      dmErr = msg;
+    } finally {
+      dmBusy = false;
+    }
+  }
+
+  async function doDauminiKeySave() {
+    if (!dmKey.trim()) {
+      dmErr = '请粘贴 daumini API 密钥';
+      return;
+    }
+    dmBusy = true;
+    dmErr = '';
+    dmOk = '';
+    try {
+      await ctrl.saveDauminiKey(dmBase, dmKey.trim());
+      dmKey = '';
+      dmOk = '密钥已保存并接入';
+      setTimeout(() => {
+        showLoginModal = false;
+      }, 400);
+    } catch (e) {
+      dmErr = e instanceof Error ? e.message : String(e);
+    } finally {
+      dmBusy = false;
     }
   }
 
@@ -191,43 +318,75 @@
       <span style="font-size: 19px;">
         <Wordmark live={isRunning} />
       </span>
-      <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => ctrl.toggleTheme()}>
-        {ctrl.theme === 'light' ? '深色' : '浅色'}
+      <button
+        type="button"
+        class="btn btn-icon btn-ghost"
+        title={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
+        aria-label={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
+        onclick={() => ctrl.toggleTheme()}
+      >
+        {#if ctrl.theme === 'light'}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        {:else}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        {/if}
       </button>
     </div>
 
-    <Segmented
-      label="主导航"
-      full={true}
-      value={tab}
-      options={[
-        { value: 'work', label: '工作台' },
-        { value: 'providers', label: '模型' },
-        { value: 'extensions', label: '扩展' }
-      ]}
-      onchange={(v) => switchTab(v)}
-    />
+    <nav class="side-nav" aria-label="主导航">
+      <span
+        aria-hidden="true"
+        class="side-nav-marker border-line {navMarker.glide ? 'glide' : ''}"
+        style:translate="0 {navMarker.y}px"
+        style:height="{navMarker.h}px"
+        style:opacity={navMarker.h ? 1 : 0}
+      ></span>
+      {#each navItems as item, i (item.id)}
+        <button
+          bind:this={navButtons[i]}
+          type="button"
+          class="side-nav-btn {tab === item.id ? 'active' : ''}"
+          onclick={() => switchTab(item.id)}
+        >
+          {#if item.id === 'work'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {:else if item.id === 'providers'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
+          {:else}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
+          {/if}
+          <span>{item.label}</span>
+        </button>
+      {/each}
+    </nav>
 
-    <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => { tab = 'work'; showNewBox = !showNewBox; }}>
-      新建会话
+    <button
+      type="button"
+      class="new-session-btn border-line"
+      onclick={() => { tab = 'work'; showNewBox = !showNewBox; }}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span>新建会话</span>
     </button>
 
     {#if showNewBox}
-      <div class="sketch card-sketch" style="padding: 10px; animation: pop-in 0.2s var(--ease-out);">
+      <div class="border-line" style="padding: 10px; border-radius: 10px; background: var(--sunken); display: flex; flex-direction: column; gap: 8px; animation: pop-in 0.2s var(--ease-out);">
         <div class="field-col">
           <span class="field-label">工作区路径</span>
-          <input class="field border-line-strong" bind:value={newWorkspace} placeholder="." />
+          <input class="field border-line" bind:value={newWorkspace} placeholder="." />
         </div>
-        <button class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleCreateSession()}>
+        <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleCreateSession()}>
           创建并进入
         </button>
       </div>
     {/if}
 
+    <div class="side-section-label">会话</div>
     <div class="session-list">
       {#each ctrl.sessions as s (s.id)}
         <button
-          class="wobble session-item {ctrl.current?.meta.id === s.id ? 'active border-line-strong' : 'border-line'}"
+          type="button"
+          class="session-item {ctrl.current?.meta.id === s.id ? 'active border-line' : ''}"
           onclick={() => {
             withTransition(() => {
               tab = 'work';
@@ -243,26 +402,71 @@
         </button>
       {/each}
     </div>
+
+    <div class="sidebar-footer">
+      {#if dauminiConnected}
+        <div class="account-pill border-line">
+          <div class="account-info">
+            <span class="status-dot" title="daumini 已连接"></span>
+            <span class="account-email" title={dauminiProvider?.user_email || 'daumini 已连接'}>
+              {dauminiProvider?.user_email || 'daumini 已连接'}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn btn-icon btn-ghost"
+            style="width: 26px; height: 26px;"
+            title="切换或退出账号"
+            onclick={() => openLoginModal('account')}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          </button>
+        </div>
+      {:else}
+        <div style="padding: 0 2px;">
+          <div style="font-size: 13.5px; color: var(--fg);">daumini 账号</div>
+          <div style="font-size: 12px; color: var(--fg-3); margin-top: 2px;">登录后自动签发专属密钥</div>
+        </div>
+        <button
+          type="button"
+          class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong"
+          style="width: 100%;"
+          onclick={() => openLoginModal('account')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>
+          <span>一键登录 daumini</span>
+        </button>
+      {/if}
+    </div>
   </aside>
 
-  <main class="main-pane">
+  <main class="main-pane paper">
     {#if ctrl.error}
-      <div class="approval-bar border-line-strong" style="margin-top: 10px; background: var(--bad-soft); color: var(--bad);">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span>{ctrl.error}</span>
-          <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => (ctrl.error = '')}>关闭</button>
+      <div style="max-width: 780px; width: 100%; margin: 12px auto 0; padding: 0 24px;">
+        <div class="notice notice-error border-line">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <span>{ctrl.error}</span>
+            <div style="display: flex; gap: 6px;">
+              {#if looksLikeAuthError(ctrl.error)}
+                <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => openLoginModal('account')}>
+                  一键登录 daumini
+                </button>
+              {/if}
+              <button type="button" class="btn btn-sm btn-ghost" onclick={() => (ctrl.error = '')}>关闭</button>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
 
     {#if tab === 'work'}
-      <header class="topbar">
+      <header class="topbar glass">
         <div class="topbar-left">
           <span class="topbar-title">{ctrl.current?.meta.title || '未选择会话'}</span>
           {#if ctrl.current}
-            <span class="topbar-path border-line" title={ctrl.current.meta.workspace_dir}>{ctrl.current.meta.workspace_dir}</span>
+            <span class="topbar-path" title={ctrl.current.meta.workspace_dir}>{ctrl.current.meta.workspace_dir}</span>
             {#if ctrl.current.meta.parent_session_id}
-              <span class="tag mark border-line">分叉</span>
+              <span class="tag mark">分叉</span>
             {/if}
           {/if}
         </div>
@@ -270,13 +474,13 @@
         {#if ctrl.current}
           <div class="topbar-actions">
             <select
-              class="field border-line-strong"
-              style="height: 32px; padding: 0 8px;"
+              class="field-quiet border-line"
               value={ctrl.current.meta.provider_id}
               onchange={(e) => {
                 const pid = (e.target as HTMLSelectElement).value;
                 const prov = ctrl.config?.providers.find((p) => p.id === pid);
                 void ctrl.updateSession({ provider_id: pid, model_id: prov?.default_model || ctrl.current?.meta.model_id });
+                if (prov?.api_key) void ctrl.fetchProviderModels(pid).catch(() => {});
               }}
             >
               {#each ctrl.config?.providers ?? [] as p (p.id)}
@@ -285,12 +489,18 @@
             </select>
 
             <input
-              class="field border-line-strong"
-              style="width: 196px; height: 32px;"
+              class="field-quiet border-line"
+              style="width: 192px; font-family: var(--font-mono); font-size: 12.5px;"
+              list="model-suggestions"
               value={ctrl.current.meta.model_id}
               onchange={(e) => void ctrl.updateSession({ model_id: (e.target as HTMLInputElement).value })}
               placeholder="模型 ID"
             />
+            <datalist id="model-suggestions">
+              {#each currentModelSuggestions as m}
+                <option value={m}></option>
+              {/each}
+            </datalist>
 
             <Segmented
               size="sm"
@@ -304,19 +514,25 @@
               onchange={(v) => void ctrl.updateSession({ approval_mode: v as ApprovalMode })}
             />
 
-            <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.forkSession(0)}>分叉</button>
+            <button type="button" class="btn btn-sm btn-ghost" title="分叉会话" onclick={() => void ctrl.forkSession(0)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+              <span>分叉</span>
+            </button>
             <button
-              class="wobble btn btn-sm btn-secondary border-line-strong"
+              type="button"
+              class="btn btn-sm btn-ghost"
+              title={showInspector ? '收起工作区面板' : '展开工作区面板'}
               onclick={() => withTransition(() => { showInspector = !showInspector; })}
             >
-              {showInspector ? '隐藏侧栏' : '工作区'}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+              <span>{showInspector ? '收起' : '工作区'}</span>
             </button>
           </div>
         {/if}
       </header>
 
       {#if (ctrl.current?.meta.todos?.length ?? 0) > 0}
-        <div class="todo-strip border-line">
+        <div class="todo-strip">
           {#each ctrl.current?.meta.todos ?? [] as td}
             <span class="tag {td.status === 'completed' ? 'ok' : td.status === 'in_progress' ? 'mark' : ''}">
               {td.status === 'completed' ? '完成' : td.status === 'in_progress' ? '进行中' : '待办'} {td.content}
@@ -326,124 +542,213 @@
       {/if}
 
       <div class="feed" bind:this={feedEl}>
-        {#if ctrl.current && (ctrl.current.messages?.length ?? 0) === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking}
-          <div class="empty-feed">
-            <span style="font-size: 28px;"><Wordmark live={false} suffix="" /></span>
-            <div style="font-size: 16px;" class="scribble">{ctrl.current.meta.title}</div>
-            <div style="font-family: var(--font-mono); font-size: 13px; color: var(--fg-3); margin-top: 8px;">
-              {ctrl.current.meta.provider_id} / {ctrl.current.meta.model_id}
-            </div>
-          </div>
-        {/if}
+        <div class="feed-inner">
+          {#if ctrl.current && (ctrl.current.messages?.length ?? 0) === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking && !latestOrphanFailedRun}
+            <div class="empty-feed">
+              <span style="font-size: 30px;"><Wordmark live={false} suffix="" /></span>
+              <div style="font-size: 17px; margin-top: 2px;" class="scribble">{ctrl.current.meta.title}</div>
+              <div style="font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-3); margin-top: 8px;">
+                {ctrl.current.meta.provider_id} / {ctrl.current.meta.model_id}
+              </div>
 
-        {#if ctrl.current}
-          {#each ctrl.current.messages ?? [] as msg (msg.id)}
-            {#if msg.role === 'user'}
-              {@const textBlocks = (msg.blocks ?? []).filter((b) => b.type === 'text' || b.type === 'system_notice')}
-              {#if textBlocks.length > 0}
-                <div class="msg-wrap">
-                  <div class="msg-user border-line-strong">
-                    {#each textBlocks as tb}{tb.text}{/each}
+              {#if !currentProviderReady}
+                <div style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                  <span style="font-size: 13.5px; color: var(--fg-2);">当前渠道尚未配置密钥</span>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => openLoginModal('account')}>
+                      一键登录 daumini
+                    </button>
+                    <button type="button" class="btn btn-quiet border-line" onclick={() => switchTab('providers')}>
+                      配置其他模型
+                    </button>
+                  </div>
+                </div>
+              {:else}
+                <div class="starter-row">
+                  {#each starters as s}
+                    <button type="button" class="wobble starter-chip border-line" onclick={() => (promptText = s)}>
+                      {s}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if ctrl.current}
+            {@const msgs = ctrl.current.messages ?? []}
+            {#each msgs as msg, idx (msg.id)}
+              {@const nextMsg = msgs[idx + 1]}
+              {@const failedRun = msg.role === 'user' && msg.run_id && (!nextMsg || nextMsg.role === 'user') ? failedRunByRunID[msg.run_id] : undefined}
+              {#if msg.role === 'user'}
+                {@const textBlocks = (msg.blocks ?? []).filter((b) => b.type === 'text' || b.type === 'system_notice')}
+                {#if textBlocks.length > 0}
+                  <div class="turn-user">
+                    <span class="turn-rail-user" aria-hidden="true"></span>
+                    <div class="msg-user border-line">
+                      {#each textBlocks as tb}{tb.text}{/each}
+                    </div>
+                  </div>
+                {/if}
+                {#if failedRun}
+                  <div class="turn-assistant {idx === msgs.length - 1 && !ctrl.activeStreamText ? 'is-last' : ''}">
+                    <span class="turn-rail-tail" aria-hidden="true"></span>
+                    <span class="knot-wrap" aria-hidden="true">
+                      <span class="knot-dot bad"></span>
+                    </span>
+                    <div class="assistant-body">
+                      <div class="assistant-speaker">{failedRun.model_id || ctrl.current.meta.model_id}</div>
+                      <div class="notice notice-error border-line">
+                        <span>{failedRun.error}</span>
+                        {#if looksLikeAuthError(failedRun.error)}
+                          <div>
+                            <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => openLoginModal('account')}>
+                              一键登录 daumini
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              {:else if msg.role === 'assistant'}
+                <div class="turn-assistant {idx === msgs.length - 1 && !ctrl.activeStreamText && !ctrl.activeStreamThinking ? 'is-last' : ''}">
+                  <span class="turn-rail-tail" aria-hidden="true"></span>
+                  <span class="knot-wrap" aria-hidden="true">
+                    <span class="knot-dot"></span>
+                  </span>
+                  <div class="assistant-body">
+                    <div class="assistant-speaker">{msg.model_id || ctrl.current.meta.model_id}</div>
+                    {#each msg.blocks ?? [] as b}
+                      {#if b.type === 'thinking' && b.thinking}
+                        <details class="think-box border-line">
+                          <summary>思考过程 {b.thinking.length} 字</summary>
+                          <div class="msg-text" style="margin-top: 6px; font-size: 13.5px; color: var(--fg-2);">{b.thinking}</div>
+                        </details>
+                      {:else if b.type === 'text' && b.text}
+                        <div class="msg-text">{b.text}</div>
+                      {:else if b.type === 'tool_use'}
+                        {@const res = b.id ? toolResultsMap[b.id] : undefined}
+                        <details class="tool-card border-line">
+                          <summary class="tool-head">
+                            <span class="tool-name">{b.name}</span>
+                            <span class="tag {res?.is_error ? 'bad' : res ? 'ok' : 'mark'}">
+                              {res ? (res.is_error ? '报错' : '完成') : '执行中'}
+                            </span>
+                          </summary>
+                          <pre class="code-surface">{fmtJSON(b.input)}</pre>
+                          {#if res}
+                            <pre class="code-surface">{res.text}</pre>
+                          {/if}
+                        </details>
+                      {/if}
+                    {/each}
+                    {#if msg.usage}
+                      <div class="usage-line">
+                        <span class="marked">缓存 {cachePct(msg.usage)}</span>
+                        <span>输入 {fmtNum(totalIn(msg.usage))}</span>
+                        <span>输出 {fmtNum(msg.usage.output_tokens)}</span>
+                        {#if msg.usage.total_cost_nusd}
+                          <span>{fmtCost(msg.usage.total_cost_nusd)}</span>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 </div>
               {/if}
-            {:else if msg.role === 'assistant'}
-              <div class="msg-wrap">
-                <div class="msg-assistant sketch">
-                  {#each msg.blocks ?? [] as b}
-                    {#if b.type === 'thinking' && b.thinking}
-                      <details class="think-box border-line">
-                        <summary>思考过程 {b.thinking.length} 字</summary>
-                        <div class="msg-text" style="margin-top: 6px;">{b.thinking}</div>
-                      </details>
-                    {:else if b.type === 'text' && b.text}
-                      <div class="msg-text">{b.text}</div>
-                    {:else if b.type === 'tool_use'}
-                      {@const res = b.id ? toolResultsMap[b.id] : undefined}
-                      <details class="tool-card border-line">
-                        <summary class="tool-head">
-                          <span class="tool-name">{b.name}</span>
-                          <span class="tag {res?.is_error ? 'bad' : res ? 'ok' : 'mark'}">
-                            {res ? (res.is_error ? '报错' : '完成') : '执行中'}
-                          </span>
-                        </summary>
-                        <pre class="code-surface">{fmtJSON(b.input)}</pre>
-                        {#if res}
-                          <pre class="code-surface">{res.text}</pre>
-                        {/if}
-                      </details>
+            {/each}
+
+            {#if latestOrphanFailedRun}
+              <div class="turn-assistant is-last">
+                <span class="turn-rail-tail" aria-hidden="true"></span>
+                <span class="knot-wrap" aria-hidden="true">
+                  <span class="knot-dot bad"></span>
+                </span>
+                <div class="assistant-body">
+                  <div class="assistant-speaker">{latestOrphanFailedRun.model_id || ctrl.current.meta.model_id}</div>
+                  <div class="notice notice-error border-line">
+                    <span>{latestOrphanFailedRun.error}</span>
+                    {#if looksLikeAuthError(latestOrphanFailedRun.error)}
+                      <div>
+                        <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => openLoginModal('account')}>
+                          一键登录 daumini
+                        </button>
+                      </div>
                     {/if}
-                  {/each}
-                  {#if msg.usage}
-                    <div style="font-size: 12px; color: var(--fg-3); display: flex; gap: 12px; font-variant-numeric: tabular-nums;">
-                      <span class="marked">缓存 {cachePct(msg.usage)}</span>
-                      <span>输入 {totalIn(msg.usage)}</span>
-                      <span>输出 {msg.usage.output_tokens}</span>
-                      {#if msg.usage.total_cost_nusd}
-                        <span>{fmtCost(msg.usage.total_cost_nusd)}</span>
-                      {/if}
-                    </div>
-                  {/if}
+                  </div>
                 </div>
               </div>
             {/if}
-          {/each}
 
-          {#if ctrl.activeStreamThinking || ctrl.activeStreamText || Object.keys(ctrl.activeTools).length > 0}
-            <div class="msg-wrap">
-              <div class="msg-assistant sketch">
-                {#if ctrl.activeStreamThinking}
-                  <details class="think-box border-line" open>
-                    <summary>正在思考</summary>
-                    <div class="msg-text" style="margin-top: 6px;">{ctrl.activeStreamThinking}</div>
-                  </details>
-                {/if}
-                {#if ctrl.activeStreamText}
-                  <div class="msg-text">{ctrl.activeStreamText}</div>
-                {/if}
-                {#each Object.entries(ctrl.activeTools) as [tid, t]}
-                  <div class="tool-card border-line">
-                    <div class="tool-head">
-                      <span class="tool-name">{t.name}</span>
-                      <span class="tag {t.output ? (t.is_error ? 'bad' : 'ok') : 'mark'}">
-                        {t.output ? `${t.duration_ms ?? 0}ms` : '运行中'}
-                      </span>
+            {#if isRunning || ctrl.activeStreamThinking || ctrl.activeStreamText || Object.keys(ctrl.activeTools).length > 0}
+              <div class="turn-assistant is-last">
+                <span class="turn-rail-tail" aria-hidden="true"></span>
+                <span class="knot-wrap" aria-hidden="true">
+                  <span class="knot-ping"></span>
+                  <span class="knot-dot"></span>
+                </span>
+                <div class="assistant-body">
+                  <div class="assistant-speaker">{ctrl.current.meta.model_id}</div>
+                  {#if ctrl.activeStreamThinking}
+                    <details class="think-box border-line" open>
+                      <summary>正在思考</summary>
+                      <div class="msg-text" style="margin-top: 6px; font-size: 13.5px; color: var(--fg-2);">{ctrl.activeStreamThinking}</div>
+                    </details>
+                  {/if}
+                  {#if ctrl.activeStreamText}
+                    <div class="msg-text">{ctrl.activeStreamText}<span class="caret" aria-hidden="true"></span></div>
+                  {:else if !ctrl.activeStreamThinking && Object.keys(ctrl.activeTools).length === 0}
+                    <div style="font-size: 14px; color: var(--fg-3);">正在响应</div>
+                  {/if}
+                  {#each Object.entries(ctrl.activeTools) as [tid, t] (tid)}
+                    <div class="tool-card border-line">
+                      <div class="tool-head">
+                        <span class="tool-name">{t.name}</span>
+                        <span class="tag {t.output ? (t.is_error ? 'bad' : 'ok') : 'mark'}">
+                          {t.output ? `${t.duration_ms ?? 0}ms` : '运行中'}
+                        </span>
+                      </div>
+                      <pre class="code-surface">{fmtJSON(t.input)}</pre>
+                      {#if t.output}
+                        <pre class="code-surface">{t.output}</pre>
+                      {/if}
                     </div>
-                    <pre class="code-surface">{fmtJSON(t.input)}</pre>
-                    {#if t.output}
-                      <pre class="code-surface">{t.output}</pre>
-                    {/if}
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
-            </div>
+            {/if}
           {/if}
-        {/if}
+        </div>
       </div>
 
       {#if pendingApprovals.length > 0}
-        {#each pendingApprovals as ap (ap.id)}
-          <div class="approval-bar border-line-strong">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span>需要确认工具 {ap.tool_name}</span>
-              <span class="tag">Hash {ap.args_hash.slice(0, 8)}</span>
+        <div class="approval-wrap">
+          {#each pendingApprovals as ap (ap.id)}
+            <div class="approval-bar border-line">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px;">需要确认工具 <code style="font-family: var(--font-mono);">{ap.tool_name}</code></span>
+                <span class="tag">Hash {ap.args_hash.slice(0, 8)}</span>
+              </div>
+              <pre class="code-surface">{fmtJSON(ap.args_json)}</pre>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="wobble btn btn-sm btn-primary hatch-green hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_once')}>允许一次</button>
+                <button type="button" class="wobble btn btn-sm btn-accent hatch-yellow hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_always')}>本会话同类放行</button>
+                <button type="button" class="btn btn-sm btn-danger-ghost" onclick={() => void ctrl.resolveApproval(ap.id, 'deny')}>拒绝</button>
+              </div>
             </div>
-            <pre class="code-surface" style="margin: 0;">{fmtJSON(ap.args_json)}</pre>
-            <div style="display: flex; gap: 8px;">
-              <button class="wobble btn btn-sm btn-primary hatch-green hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_once')}>允许一次</button>
-              <button class="wobble btn btn-sm btn-accent hatch-yellow hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_always')}>本会话同类放行</button>
-              <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'deny')}>拒绝</button>
-            </div>
-          </div>
-        {/each}
+          {/each}
+        </div>
       {/if}
 
       <div class="composer-area">
-        <div class="composer-box sketch">
+        <div class="composer-box border-line-strong">
+          {#if isRunning}
+            <span class="composer-scan" aria-hidden="true"><span class="composer-scan-bar"></span></span>
+          {/if}
           <textarea
             class="composer-input"
             bind:value={promptText}
-            placeholder="输入任务或指令 Enter 发送 Shift+Enter 换行"
+            placeholder={currentProviderReady ? '输入任务或指令' : '输入任务或指令（先登录 daumini 或配置密钥）'}
             onkeydown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -451,188 +756,151 @@
               }
             }}
           ></textarea>
-          <div class="composer-foot">
-            <div style="font-size: 12px; color: var(--fg-3); display: flex; gap: 12px; font-variant-numeric: tabular-nums;">
+          <div class="composer-bar">
+            <div class="composer-stats">
               {#if ctrl.current}
-                <span>缓存 {cachePct(ctrl.current.meta.total_usage)}</span>
-                <span>输入 {totalIn(ctrl.current.meta.total_usage)}</span>
-                <span>输出 {ctrl.current.meta.total_usage.output_tokens}</span>
+                <span class="marked">缓存 {cachePct(ctrl.current.meta.total_usage)}</span>
+                <span>输入 {fmtNum(totalIn(ctrl.current.meta.total_usage))}</span>
+                <span>输出 {fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
               {/if}
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="kbd">Enter</span>
               {#if isRunning}
-                <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>停止</button>
-                <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void handleSend('steer')}>插队引导</button>
-                <button class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleSend('queue')}>排队</button>
+                <button type="button" class="btn btn-sm btn-quiet border-line" onclick={() => void handleSend('steer')}>插队</button>
+                <button type="button" class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>
+                  <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  <span>停止</span>
+                </button>
               {:else}
-                <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>发送</button>
+                <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>
+                  <span>发送</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                </button>
               {/if}
             </div>
           </div>
         </div>
       </div>
 
-    {:else if tab === 'providers' && ctrl.config}
-      <div class="panel-page">
-        <div class="panel-inner">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 20px;" class="scribble">模型与凭据</span>
-            <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void saveProviders()}>保存配置</button>
+    {:else if tab === 'providers'}
+      <div class="page-scroll">
+        <div class="page-container">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <h1 class="page-title scribble">模型与渠道</h1>
+            <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => openLoginModal('account')}>
+              {dauminiConnected ? '管理 daumini 账号' : '一键登录 daumini'}
+            </button>
           </div>
 
-          <div class="card-sketch sketch">
-            <span>默认行为</span>
-            <div class="grid-2">
-              <div class="field-col">
-                <span class="field-label">默认 Provider</span>
-                <select class="field border-line-strong" bind:value={ctrl.config.default_provider}>
-                  {#each ctrl.config.providers as p}
-                    <option value={p.id}>{p.name}</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="field-col">
-                <span class="field-label">默认模型</span>
-                <input class="field border-line-strong" bind:value={ctrl.config.default_model} />
-              </div>
-              <div class="field-col">
-                <span class="field-label">默认审批模式</span>
-                <select class="field border-line-strong" bind:value={ctrl.config.approval_mode}>
-                  <option value="ask">每次询问</option>
-                  <option value="auto_read">只读放行</option>
-                  <option value="yolo">全部放行</option>
-                </select>
-              </div>
-              <div class="field-col">
-                <span class="field-label">单轮最大步数</span>
-                <input class="field border-line-strong" type="number" bind:value={ctrl.config.max_turns} />
-              </div>
+          <div class="card-section border-line">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span>已配置渠道</span>
+              <span style="font-size: 12.5px; color: var(--fg-3);">支持 daumini DeepSeek OpenAI Anthropic 及自定义兼容端点</span>
             </div>
-            <div class="field-col">
-              <span class="field-label">附加系统指令</span>
-              <textarea class="field border-line-strong" rows="2" bind:value={ctrl.config.system_extra} placeholder="系统提示附加内容"></textarea>
+            {#each ctrl.config?.providers ?? [] as p, idx (p.id)}
+              <div style="padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span>{p.name}</span>
+                    <span class="tag">{p.protocol}</span>
+                    {#if p.api_key}
+                      <span class="tag ok">已配置</span>
+                    {/if}
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    {#if p.id === 'daumini'}
+                      <button type="button" class="btn btn-sm btn-ghost" onclick={() => openLoginModal('account')}>
+                        {p.api_key ? '重新登录' : '一键登录'}
+                      </button>
+                    {/if}
+                    <button type="button" class="btn btn-sm btn-ghost" onclick={() => void ctrl.fetchProviderModels(p.id)}>拉取模型</button>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <div class="field-col">
+                    <span class="field-label">Base URL</span>
+                    <input class="field border-line" value={p.base_url} oninput={(e) => updateProviderField(idx, { base_url: (e.target as HTMLInputElement).value })} />
+                  </div>
+                  <div class="field-col">
+                    <span class="field-label">API Key</span>
+                    <input class="field border-line" type="password" value={p.api_key || ''} placeholder={p.api_key_env ? `环境变量 ${p.api_key_env}` : '填入密钥'} oninput={(e) => updateProviderField(idx, { api_key: (e.target as HTMLInputElement).value })} />
+                  </div>
+                  <div class="field-col">
+                    <span class="field-label">默认模型</span>
+                    <input class="field border-line" value={p.default_model} oninput={(e) => updateProviderField(idx, { default_model: (e.target as HTMLInputElement).value })} />
+                  </div>
+                </div>
+                {#if ctrl.providerModels[p.id]?.length}
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    {#each ctrl.providerModels[p.id].slice(0, 18) as mid}
+                      <button
+                        type="button"
+                        class="tag"
+                        style="cursor: pointer;"
+                        onclick={() => updateProviderField(idx, { default_model: mid })}
+                      >
+                        {mid}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+            <div>
+              <button type="button" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void saveProviders()}>保存渠道配置</button>
             </div>
           </div>
 
-          <div class="card-sketch sketch">
-            <span>daumini 中转账号绑定</span>
-            <div class="grid-2">
-              <div class="field-col">
-                <span class="field-label">中转地址</span>
-                <input class="field border-line-strong" bind:value={dmBase} />
-              </div>
-              <div class="field-col">
-                <span class="field-label">账号邮箱</span>
-                <input class="field border-line-strong" bind:value={dmEmail} placeholder="user@example.com" />
-              </div>
-              <div class="field-col">
-                <span class="field-label">密码</span>
-                <input class="field border-line-strong" type="password" bind:value={dmPass} />
-              </div>
-              <div class="field-col" style="justify-content: flex-end;">
-                <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void doDauminiLogin()}>登录并写入本地密钥</button>
-              </div>
-            </div>
-            {#if dmStatus}
-              <div class="tag mark border-line">{dmStatus}</div>
-            {/if}
-          </div>
-
-          {#each ctrl.config.providers as p, idx (p.id)}
-            <div class="card-sketch sketch">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>{p.name} ({p.id})</span>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.fetchProviderModels(p.id)}>拉取模型</button>
-                  <label style="font-size: 13px; display: flex; gap: 4px; align-items: center;">
-                    <input type="checkbox" checked={p.enabled} onchange={(e) => updateProviderField(idx, { enabled: (e.target as HTMLInputElement).checked })} />
-                    启用
-                  </label>
-                </div>
-              </div>
-              <div class="grid-2">
-                <div class="field-col">
-                  <span class="field-label">协议</span>
-                  <select class="field border-line-strong" value={p.protocol} onchange={(e) => updateProviderField(idx, { protocol: (e.target as HTMLSelectElement).value as ProviderConfig['protocol'] })}>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="openai_chat">OpenAI Chat</option>
-                    <option value="openai_responses">OpenAI Responses</option>
-                    <option value="anthropic">Anthropic Messages</option>
-                    <option value="daumini">daumini 中转</option>
-                  </select>
-                </div>
-                <div class="field-col">
-                  <span class="field-label">Base URL</span>
-                  <input class="field border-line-strong" value={p.base_url} oninput={(e) => updateProviderField(idx, { base_url: (e.target as HTMLInputElement).value })} />
-                </div>
-                <div class="field-col">
-                  <span class="field-label">API Key 留空保留旧值</span>
-                  <input class="field border-line-strong" type="password" value={p.api_key ?? ''} oninput={(e) => updateProviderField(idx, { api_key: (e.target as HTMLInputElement).value })} placeholder={p.api_key_env ? `环境变量 ${p.api_key_env}` : 'sk-...'} />
-                </div>
-                <div class="field-col">
-                  <span class="field-label">默认模型</span>
-                  <input class="field border-line-strong" value={p.default_model ?? ''} oninput={(e) => updateProviderField(idx, { default_model: (e.target as HTMLInputElement).value })} />
-                </div>
-              </div>
-              {#if (ctrl.providerModels[p.id]?.length ?? 0) > 0}
-                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                  {#each ctrl.providerModels[p.id].slice(0, 24) as mid}
-                    <button class="wobble tag border-line" onclick={() => updateProviderField(idx, { default_model: mid })}>{mid}</button>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-
-          <div class="card-sketch sketch">
-            <span>添加自定义 OpenAI 兼容端点</span>
-            <div class="grid-2">
-              <input class="field border-line-strong" bind:value={newProvName} placeholder="名称" />
-              <input class="field border-line-strong" bind:value={newProvUrl} placeholder="Base URL" />
-              <input class="field border-line-strong" type="password" bind:value={newProvKey} placeholder="API Key" />
-              <input class="field border-line-strong" bind:value={newProvModel} placeholder="默认模型名" />
+          <div class="card-section border-line">
+            <span>添加自定义 OpenAI 兼容渠道</span>
+            <div class="form-grid">
+              <input class="field border-line" bind:value={newProvName} placeholder="名称" />
+              <input class="field border-line" bind:value={newProvUrl} placeholder="Base URL" />
+              <input class="field border-line" type="password" bind:value={newProvKey} placeholder="API Key" />
+              <input class="field border-line" bind:value={newProvModel} placeholder="默认模型 ID" />
             </div>
             <div>
-              <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void addCustomProvider()}>添加并保存</button>
+              <button type="button" class="btn btn-quiet border-line" onclick={() => void addCustomProvider()}>添加并设为默认</button>
             </div>
           </div>
         </div>
       </div>
 
-    {:else if tab === 'extensions'}
-      <div class="panel-page">
-        <div class="panel-inner">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 20px;" class="scribble">扩展与日志</span>
-            <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void ctrl.reloadMCP()}>重载扩展</button>
-          </div>
+    {:else}
+      <div class="page-scroll">
+        <div class="page-container">
+          <h1 class="page-title scribble">扩展与诊断</h1>
 
-          <div class="card-sketch sketch">
-            <span>MCP 服务器</span>
-            <div class="grid-2">
-              <input class="field border-line-strong" bind:value={mcpName} placeholder="服务名" />
-              <select class="field border-line-strong" bind:value={mcpTransport}>
-                <option value="stdio">Stdio 子进程</option>
+          <div class="card-section border-line">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>MCP 服务</span>
+              <button type="button" class="btn btn-sm btn-ghost" onclick={() => void ctrl.reloadMCP()}>重载</button>
+            </div>
+            <div class="form-grid">
+              <input class="field border-line" bind:value={mcpName} placeholder="服务名称" />
+              <select class="field border-line" bind:value={mcpTransport}>
+                <option value="stdio">Stdio 本地进程</option>
                 <option value="http">Streamable HTTP</option>
               </select>
               {#if mcpTransport === 'stdio'}
-                <input class="field border-line-strong" bind:value={mcpCommand} placeholder="可执行命令" />
-                <input class="field border-line-strong" bind:value={mcpArgs} placeholder="参数 空格分隔" />
+                <input class="field border-line" bind:value={mcpCommand} placeholder="可执行命令" />
+                <input class="field border-line" bind:value={mcpArgs} placeholder="参数 空格分隔" />
               {:else}
-                <input class="field border-line-strong" bind:value={mcpURL} placeholder="MCP URL" />
+                <input class="field border-line" bind:value={mcpURL} placeholder="MCP URL" />
               {/if}
             </div>
             <div>
-              <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void addMCP()}>添加服务</button>
+              <button type="button" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void addMCP()}>添加服务</button>
             </div>
             {#each ctrl.config?.mcp_servers ?? [] as ms, idx}
-              <div class="border-line" style="display: flex; justify-content: space-between; align-items: center; background: var(--sunken); padding: 8px 12px; border-radius: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--sunken);">
                 <div>
                   <span>{ms.name}</span>
                   <span class="tag" style="margin-left: 6px;">{ms.transport}</span>
                   <span style="font-size: 12px; color: var(--fg-3); margin-left: 8px;">{ms.command || ms.url}</span>
                 </div>
-                <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void removeMCP(idx)}>移除</button>
+                <button type="button" class="btn btn-sm btn-danger-ghost" onclick={() => void removeMCP(idx)}>移除</button>
               </div>
             {/each}
             {#each ctrl.mcpServers as st}
@@ -642,13 +910,13 @@
             {/each}
           </div>
 
-          <div class="card-sketch sketch">
+          <div class="card-section border-line">
             <span>技能 ({ctrl.skills.length})</span>
             {#if ctrl.skills.length === 0}
               <span style="font-size: 13px; color: var(--fg-3);">暂无已加载技能</span>
             {:else}
               {#each ctrl.skills as sk}
-                <div style="font-size: 13px;">
+                <div style="font-size: 13.5px;">
                   <span>{sk.name}</span> <span class="tag">{sk.scope}</span>
                   <span style="color: var(--fg-2); margin-left: 6px;">{sk.description}</span>
                 </div>
@@ -656,19 +924,19 @@
             {/if}
           </div>
 
-          <div class="card-sketch sketch">
+          <div class="card-section border-line">
             <span>工具 ({ctrl.tools.length})</span>
             <div style="display: flex; flex-wrap: wrap; gap: 6px;">
               {#each ctrl.tools as tl}
-                <span class="tag border-line">{tl.name}</span>
+                <span class="tag">{tl.name}</span>
               {/each}
             </div>
           </div>
 
-          <div class="card-sketch sketch">
+          <div class="card-section border-line">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span>诊断日志</span>
-              <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.loadLogs()}>刷新</button>
+              <button type="button" class="btn btn-sm btn-ghost" onclick={() => void ctrl.loadLogs()}>刷新</button>
             </div>
             <pre class="code-surface">{ctrl.logs.map((l) => `${l.ts} [${l.level}] ${l.component} ${l.msg}`).join('\n') || '暂无日志'}</pre>
           </div>
@@ -679,37 +947,178 @@
 
   {#if tab === 'work' && showInspector && ctrl.current}
     <aside class="inspector">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span>工作区文件</span>
-        <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}>刷新</button>
-      </div>
-      <div class="inspector-files">
-        {#each ctrl.files as f}
-          <button class="file-row" onclick={() => void ctrl.readFile(f)}>{f}</button>
-        {/each}
-      </div>
-
-      {#if ctrl.filePreview}
-        <div class="sketch card-sketch" style="padding: 10px; animation: pop-in 0.2s var(--ease-out);">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-family: var(--font-mono); font-size: 12px;">{ctrl.filePreview.path}</span>
-            <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => (ctrl.filePreview = null)}>关闭</button>
+      <div class="inspector-section">
+        <div class="inspector-head">
+          <span>缓存与用量</span>
+          <span class="tnum marked" style="font-size: 18px; color: var(--fg);">{cachePct(ctrl.current.meta.total_usage)}</span>
+        </div>
+        <div class="stat-grid border-line">
+          <div class="stat-cell">
+            <span class="stat-label">总输入</span>
+            <span class="stat-val">{fmtNum(totalIn(ctrl.current.meta.total_usage))}</span>
           </div>
-          <pre class="code-surface" style="max-height: 240px;">{ctrl.filePreview.content}</pre>
+          <div class="stat-cell">
+            <span class="stat-label">缓存读取</span>
+            <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.cache_read_tokens)}</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">缓存写入</span>
+            <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.cache_write_tokens)}</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">总输出</span>
+            <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
+          </div>
         </div>
-      {/if}
+      </div>
 
-      <div class="sketch card-sketch" style="padding: 12px;">
-        <span>缓存与用量</span>
-        <div style="font-size: 13px; color: var(--fg-2); display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums;">
-          <div>缓存命中率 <span class="marked">{cachePct(ctrl.current.meta.total_usage)}</span></div>
-          <div>总输入 {totalIn(ctrl.current.meta.total_usage)}</div>
-          <div>缓存读取 {ctrl.current.meta.total_usage.cache_read_tokens}</div>
-          <div>缓存写入 {ctrl.current.meta.total_usage.cache_write_tokens}</div>
-          <div>总输出 {ctrl.current.meta.total_usage.output_tokens}</div>
-          <div>事件序列 {ctrl.current.meta.last_seq}</div>
+      <div class="inspector-section-grow">
+        <div class="inspector-head">
+          <span>工作区文件</span>
+          <button
+            type="button"
+            class="btn btn-icon btn-ghost"
+            style="width: 28px; height: 28px;"
+            title="刷新文件列表"
+            onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          </button>
         </div>
+
+        <div class="inspector-files">
+          {#each ctrl.files as f}
+            <button type="button" class="file-row" onclick={() => void ctrl.readFile(f)}>
+              {#if f.endsWith('/')}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              {:else}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+              {/if}
+              <span>{f}</span>
+            </button>
+          {/each}
+        </div>
+
+        {#if ctrl.filePreview}
+          <div class="border-line" style="padding: 10px; border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 6px; animation: pop-in 0.2s var(--ease-out);">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+              <span style="font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{ctrl.filePreview.path}</span>
+              <button type="button" class="btn btn-sm btn-ghost" style="height: 24px; padding: 0 6px;" onclick={() => (ctrl.filePreview = null)}>关闭</button>
+            </div>
+            <pre class="code-surface" style="max-height: 210px;">{ctrl.filePreview.content}</pre>
+          </div>
+        {/if}
       </div>
     </aside>
   {/if}
 </div>
+
+{#if showLoginModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" onclick={(e) => { if (e.target === e.currentTarget) showLoginModal = false; }}>
+    <div class="modal-card sketch" role="dialog" aria-modal="true" aria-label="登录 daumini 账号">
+      <div class="modal-head">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 18px;"><Wordmark live={dmBusy} suffix="" /></span>
+          <span style="font-size: 15px; color: var(--fg-2);">账号接入</span>
+        </div>
+        <button type="button" class="btn btn-icon btn-ghost" aria-label="关闭" onclick={() => (showLoginModal = false)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <Segmented
+        label="登录方式"
+        full={true}
+        value={loginMode}
+        options={[
+          { value: 'account', label: '账号一键登录' },
+          { value: 'key', label: '粘贴密钥' }
+        ]}
+        onchange={(v) => { loginMode = v; dmErr = ''; dmOk = ''; }}
+      />
+
+      {#if loginMode === 'account'}
+        <form
+          style="display: flex; flex-direction: column; gap: 12px;"
+          onsubmit={(e) => { e.preventDefault(); void doDauminiLogin(); }}
+        >
+          <div class="field-col">
+            <span class="field-label">邮箱</span>
+            <input class="field border-line" type="email" autocomplete="username" bind:value={dmEmail} placeholder="you@example.com" required />
+          </div>
+          <div class="field-col">
+            <span class="field-label">密码</span>
+            <input class="field border-line" type="password" autocomplete="current-password" bind:value={dmPass} placeholder="输入 daumini 密码" required />
+          </div>
+
+          {#if dmShowInvite}
+            <div class="field-col">
+              <span class="field-label">内测邀请码</span>
+              <input class="field border-line" bind:value={dmInvite} placeholder="输入邀请码" />
+            </div>
+          {/if}
+
+          {#if dmShowBase}
+            <div class="field-col">
+              <span class="field-label">中转地址</span>
+              <input class="field border-line" bind:value={dmBase} placeholder="https://mini.daum.pw" />
+            </div>
+          {:else}
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--fg-3);">
+              <span>中转 {dmBase}</span>
+              <button type="button" class="btn btn-sm btn-ghost" style="height: 22px; padding: 0 6px; font-size: 12px;" onclick={() => (dmShowBase = true)}>修改地址</button>
+            </div>
+          {/if}
+
+          {#if dmErr}
+            <div class="notice notice-error border-line">{dmErr}</div>
+          {/if}
+          {#if dmOk}
+            <div class="notice notice-ok border-line">{dmOk}</div>
+          {/if}
+
+          <button type="submit" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" style="width: 100%;" disabled={dmBusy}>
+            {dmBusy ? '正在登录并签发密钥' : '一键登录并签发密钥'}
+          </button>
+
+          {#if dauminiConnected}
+            <button
+              type="button"
+              class="btn btn-sm btn-danger-ghost"
+              style="width: 100%;"
+              onclick={async () => {
+                await ctrl.logoutDaumini();
+                dmOk = '已退出当前 daumini 账号';
+              }}
+            >
+              退出当前账号
+            </button>
+          {/if}
+        </form>
+      {:else}
+        <form
+          style="display: flex; flex-direction: column; gap: 12px;"
+          onsubmit={(e) => { e.preventDefault(); void doDauminiKeySave(); }}
+        >
+          <div style="font-size: 13px; color: var(--fg-2); line-height: 1.6;">
+            前往 <a href="{dmBase}/console/keys" target="_blank" rel="noreferrer">{dmBase}/console/keys</a> 复制推理密钥粘贴即可
+          </div>
+          <div class="field-col">
+            <span class="field-label">API 密钥</span>
+            <input class="field border-line" type="password" bind:value={dmKey} placeholder="sk-dm-..." required />
+          </div>
+          {#if dmErr}
+            <div class="notice notice-error border-line">{dmErr}</div>
+          {/if}
+          {#if dmOk}
+            <div class="notice notice-ok border-line">{dmOk}</div>
+          {/if}
+          <button type="submit" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" style="width: 100%;" disabled={dmBusy}>
+            {dmBusy ? '正在保存' : '保存并接入'}
+          </button>
+        </form>
+      {/if}
+    </div>
+  </div>
+{/if}

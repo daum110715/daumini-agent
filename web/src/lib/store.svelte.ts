@@ -32,8 +32,8 @@ function normalizeSnapshot(snap: SessionSnapshot): SessionSnapshot {
       todos: snap.meta?.todos ?? []
     },
     messages: snap.messages ?? [],
-    pending_approvals: snap.pending_approvals ?? [],
-    queued_messages: snap.queued_messages ?? []
+    runs: snap.runs ?? [],
+    pending_approvals: snap.pending_approvals ?? []
   };
 }
 
@@ -193,13 +193,54 @@ export class AgentController {
     this.mcpServers = mcpRes.servers ?? [];
   }
 
-  async loginDaumini(baseUrl: string, email: string, password: string) {
+  async loginDaumini(baseUrl: string, email: string, password: string, inviteCode = '') {
     this.error = '';
     const saved = await apiJSON<AgentConfig>('/api/providers/daumini/login', {
       method: 'POST',
-      body: JSON.stringify({ base_url: baseUrl, email, password })
+      body: JSON.stringify({ base_url: baseUrl, email, password, invite_code: inviteCode })
     });
     this.config = saved;
+    await this.afterDauminiConnected();
+  }
+
+  async saveDauminiKey(baseUrl: string, apiKey: string) {
+    this.error = '';
+    const saved = await apiJSON<AgentConfig>('/api/providers/daumini/key', {
+      method: 'POST',
+      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey })
+    });
+    this.config = saved;
+    await this.afterDauminiConnected();
+  }
+
+  async logoutDaumini() {
+    this.error = '';
+    const saved = await apiJSON<AgentConfig>('/api/providers/daumini/logout', {
+      method: 'POST'
+    });
+    this.config = saved;
+  }
+
+  private async afterDauminiConnected() {
+    let preferredModel = '';
+    try {
+      await this.fetchProviderModels('daumini');
+      const models = this.providerModels['daumini'] ?? [];
+      if (models.length > 0) {
+        preferredModel =
+          models.find((m) => m.includes('deepseek')) ||
+          models.find((m) => !m.includes('mock')) ||
+          models[0];
+      }
+    } catch {
+      // ignore model fetch error after login
+    }
+    if (this.current) {
+      await this.updateSession({
+        provider_id: 'daumini',
+        model_id: preferredModel || this.current.meta.model_id || 'deepseek/deepseek-chat'
+      });
+    }
   }
 
   async fetchProviderModels(providerId: string) {

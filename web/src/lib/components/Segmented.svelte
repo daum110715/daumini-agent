@@ -48,7 +48,7 @@
   <span
     bind:this={pillEl}
     aria-hidden="true"
-    class="seg-pill border-line-strong {glide ? 'glide' : ''}"
+    class="seg-pill border-line {glide ? 'glide' : ''}"
     style:translate="{pill.x}px 0"
     style:width="{pill.w}px"
     style:opacity={pill.w ? 1 : 0}
