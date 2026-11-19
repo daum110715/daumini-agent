@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { flip } from 'svelte/animate';
+  import { cubicIn, cubicOut } from 'svelte/easing';
+  import { fade, fly } from 'svelte/transition';
   import { AgentController } from './lib/store.svelte';
   import { renderMarkdown } from './lib/markdown';
+  import { dialogIn, pop, popOut, turnIn } from './lib/motion';
   import Collapsible from './lib/components/Collapsible.svelte';
   import ModelPicker from './lib/components/ModelPicker.svelte';
   import Picker from './lib/components/Picker.svelte';
@@ -66,6 +70,11 @@
   let navMarker = $state({ y: 0, h: 0, glide: false });
   let navPlaced = false;
 
+  // Gliding marker for active session in sidebar
+  let sessionEls = $state<Record<string, HTMLDivElement>>({});
+  let sessionMarker = $state({ y: 0, h: 0, glide: false });
+  let sessionPlaced = false;
+
   $effect(() => {
     const idx = navItems.findIndex((item) => item.id === tab);
     const el = navButtons[idx];
@@ -79,12 +88,32 @@
     }
   });
 
-  // Auto-grow composer textarea up to 220px (matching daumini Composer.svelte)
+  $effect(() => {
+    const activeId = ctrl.current?.meta.id;
+    const count = ctrl.sessions.length;
+    void count;
+    void tick().then(() => {
+      const el = activeId ? sessionEls[activeId] : undefined;
+      if (!el) {
+        sessionMarker = { y: 0, h: 0, glide: sessionPlaced };
+        return;
+      }
+      sessionMarker = { y: el.offsetTop, h: el.offsetHeight, glide: sessionPlaced };
+      if (!sessionPlaced) {
+        sessionPlaced = true;
+        requestAnimationFrame(() => {
+          sessionMarker = { ...sessionMarker, glide: true };
+        });
+      }
+    });
+  });
+
+  // Auto-grow composer textarea up to 200px (compact workbench height)
   $effect(() => {
     void promptText;
     if (!composerEl) return;
     composerEl.style.height = 'auto';
-    composerEl.style.height = `${Math.min(Math.max(composerEl.scrollHeight, 52), 220)}px`;
+    composerEl.style.height = `${Math.min(Math.max(composerEl.scrollHeight, 36), 200)}px`;
   });
 
   // Smart auto-scroll when messages or stream text update
@@ -583,10 +612,10 @@
       </span>
       <button
         type="button"
-        class="wobble btn btn-icon btn-ghost"
+        class="wobble btn btn-icon btn-ghost theme-btn"
         title={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
         aria-label={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
-        onclick={() => ctrl.toggleTheme()}
+        onclick={() => withTransition(() => ctrl.toggleTheme())}
       >
         {#if ctrl.theme === 'light'}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
@@ -635,7 +664,7 @@
       <button
         type="button"
         class="wobble btn btn-icon btn-quiet border-line"
-        style="height: 38px; width: 38px;"
+        style="height: 30px; width: 30px;"
         title="指定目录新建会话"
         aria-label="指定目录新建会话"
         onclick={() => {
@@ -648,11 +677,17 @@
     </div>
 
     {#if showNewBox}
-      <div class="border-line" style="padding: 11px; border-radius: 10px; background: var(--sunken); display: flex; flex-direction: column; gap: 8px; animation: pop-in 0.22s var(--ease-out);">
+      <div
+        class="border-line"
+        style="padding: 8px; border-radius: 8px; background: var(--sunken); display: flex; flex-direction: column; gap: 6px;"
+        in:pop={{ y: -5, blur: 3, duration: 190 }}
+        out:popOut={{ y: -3, duration: 120 }}
+      >
         <div class="field-col">
           <span class="field-label">工作区路径</span>
           <input
             class="field border-line"
+            style="padding: 5px 8px; font-size: var(--text-sm);"
             bind:value={newWorkspace}
             placeholder="."
             onkeydown={(e) => { if (e.key === 'Enter') void handleCreateSessionWithDir(); }}
@@ -666,9 +701,22 @@
 
     <div class="side-section-label">会话 ({ctrl.sessions.length})</div>
     <div class="session-list">
+      <span
+        aria-hidden="true"
+        class="session-marker border-line {sessionMarker.glide ? 'glide' : ''}"
+        style:translate="0 {sessionMarker.y}px"
+        style:height="{sessionMarker.h}px"
+        style:opacity={sessionMarker.h ? 1 : 0}
+      ></span>
       {#each ctrl.sessions as s (s.id)}
         {@const isActive = ctrl.current?.meta.id === s.id}
-        <div class="session-row {isActive ? 'active border-line' : ''} {deletingId === s.id ? 'confirming' : ''}">
+        <div
+          bind:this={sessionEls[s.id]}
+          animate:flip={{ duration: 260, easing: cubicOut }}
+          in:turnIn={{ y: 6, duration: 200 }}
+          out:popOut={{ y: -2, duration: 120 }}
+          class="session-row {isActive ? 'active' : ''} {deletingId === s.id ? 'confirming' : ''}"
+        >
           {#if renamingId === s.id}
             <div class="session-inline-box">
               <input
@@ -1147,7 +1195,13 @@
       <div class="composer-area">
         <div class="composer-wrap">
           {#if slashMatches.length > 0}
-            <div class="slash-menu" role="listbox" aria-label="快捷命令">
+            <div
+              class="slash-menu"
+              role="listbox"
+              aria-label="快捷命令"
+              in:pop={{ y: 6, start: 0.96, blur: 4, duration: 180 }}
+              out:popOut={{ y: 4, end: 0.97, blur: 2, duration: 110 }}
+            >
               {#each slashMatches as item, idx (item.cmd)}
                 <button
                   type="button"
@@ -1406,11 +1460,15 @@
   </main>
 
   {#if tab === 'work' && showInspector && ctrl.current}
-    <aside class="inspector">
+    <aside
+      class="inspector"
+      in:fly={{ x: 24, duration: 260, easing: cubicOut }}
+      out:fly={{ x: 20, duration: 180, easing: cubicIn }}
+    >
       <div class="inspector-section">
         <div class="inspector-head">
           <span>缓存与用量</span>
-          <span class="tnum marked" style="font-size: var(--text-xl); color: var(--fg);">{cachePct(ctrl.current.meta.total_usage)}</span>
+          <span class="tnum marked" style="font-size: var(--text-base); color: var(--fg);">{cachePct(ctrl.current.meta.total_usage)}</span>
         </div>
         <div class="cache-meter" aria-label="缓存命中率进度条">
           <span class="cache-meter-fill" style:width={`${cacheRatio(ctrl.current.meta.total_usage)}%`}></span>
@@ -1508,7 +1566,11 @@
         </div>
 
         {#if ctrl.filePreview}
-          <div class="file-preview border-line">
+          <div
+            class="file-preview border-line"
+            in:pop={{ y: 6, start: 0.97, blur: 3, duration: 200 }}
+            out:popOut={{ y: 4, duration: 120 }}
+          >
             <div class="file-preview-head">
               <span class="file-preview-path" title={ctrl.filePreview.path}>{ctrl.filePreview.path}</span>
               <div style="display: flex; gap: 4px; flex-shrink: 0;">
@@ -1529,9 +1591,17 @@
   <div
     class="modal-backdrop"
     role="presentation"
+    transition:fade={{ duration: 180 }}
     onclick={(e) => { if (e.target === e.currentTarget) showLoginModal = false; }}
   >
-    <div class="modal-card sketch" role="dialog" aria-modal="true" aria-label="登录 daumini 账号">
+    <div
+      class="modal-card sketch"
+      role="dialog"
+      aria-modal="true"
+      aria-label="登录 daumini 账号"
+      in:dialogIn
+      out:popOut={{ y: 4, end: 0.96, blur: 3, duration: 140 }}
+    >
       <div class="modal-head">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-size: 20px;"><Wordmark live={dmBusy} suffix="" /></span>
@@ -1651,5 +1721,10 @@
 {/if}
 
 {#if toastText}
-  <div class="toast border-line-strong" role="status">{toastText}</div>
+  <div
+    class="toast border-line-strong"
+    role="status"
+    in:pop={{ y: 10, start: 0.94, blur: 4, duration: 210 }}
+    out:popOut={{ y: 6, end: 0.96, blur: 2, duration: 130 }}
+  >{toastText}</div>
 {/if}

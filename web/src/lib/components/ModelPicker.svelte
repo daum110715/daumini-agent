@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { pop, popOut } from '../motion';
   import type { ModelInfo } from '../types';
 
   let {
@@ -25,6 +26,7 @@
   let activeIndex = $state(0);
   let rootEl = $state<HTMLDivElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
+  const listId = `mp-${Math.random().toString(36).slice(2, 8)}`;
 
   const mergedModels = $derived.by((): ModelInfo[] => {
     const map = new Map<string, ModelInfo>();
@@ -59,9 +61,7 @@
   function fmtPrice(nusdPerMillion?: number): string {
     if (!nusdPerMillion || nusdPerMillion <= 0) return '';
     const usd = nusdPerMillion / 1e9;
-    if (usd >= 1) return `$${usd.toFixed(2)}`;
-    if (usd >= 0.01) return `$${usd.toFixed(2)}`;
-    return `$${usd.toFixed(3)}`;
+    return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
   }
 
   function fmtCtx(n?: number): string {
@@ -126,23 +126,17 @@
     class="mp-trigger"
     class:open
     role="combobox"
+    aria-controls={listId}
     aria-expanded={open}
     aria-haspopup="listbox"
     aria-label="选择模型"
+    title={selected?.id || value}
     {disabled}
     onclick={toggle}
   >
-    <span class="mp-title-wrap">
-      <span class="mp-name">{selected?.name || value || '选择模型'}</span>
-      {#if selected?.author}
-        <span class="mp-author">· {selected.author}</span>
-      {/if}
-    </span>
+    <span class="mp-name">{selected?.name || value || '选择模型'}</span>
     {#if selected?.supports_thinking}
       <span class="mp-chip">思考</span>
-    {/if}
-    {#if selected && selected.name && selected.name !== selected.id}
-      <code class="mp-id-pill">{selected.id}</code>
     {/if}
     <svg class="mp-chev" class:rot={open} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m7 15 5 5 5-5" />
@@ -151,7 +145,13 @@
   </button>
 
   {#if open}
-    <div class="mp-popover" role="listbox">
+    <div
+      id={listId}
+      class="mp-popover"
+      role="listbox"
+      in:pop={{ y: -6, start: 0.95, blur: 4, duration: 220 }}
+      out:popOut={{ y: -4, end: 0.97, blur: 2, duration: 130 }}
+    >
       <div class="mp-search-bar">
         <svg class="mp-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="8" />
@@ -267,24 +267,28 @@
   .mp-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    height: 36px;
-    max-width: 340px;
-    padding: 0 10px 0 12px;
-    border-radius: 8px;
+    gap: 6px;
+    height: 30px;
+    max-width: 240px;
+    padding: 0 8px 0 10px;
+    border-radius: 7px;
     border: 1px solid var(--line);
     background: var(--field);
     color: var(--fg);
     font-family: var(--font-sans);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     cursor: pointer;
     min-width: 0;
-    transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+    transition: border-color 150ms var(--ease-out), transform 180ms var(--ease-spring), box-shadow 150ms var(--ease-out);
   }
 
   .mp-trigger:hover:not(:disabled),
   .mp-trigger.open {
     border-color: var(--line-strong);
+  }
+
+  .mp-trigger:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .mp-trigger:focus-visible {
@@ -293,89 +297,61 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
-  .mp-title-wrap {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-    min-width: 0;
-    overflow: hidden;
-  }
-
   .mp-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .mp-author {
-    color: var(--fg-3);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
   .mp-chip {
     font-size: var(--text-xs);
-    padding: 0 6px;
-    height: 20px;
-    display: inline-flex;
-    align-items: center;
-    border-radius: 6px;
+    padding: 0 5px;
+    line-height: 18px;
+    border-radius: 5px;
     background: var(--accent-soft);
     color: var(--accent);
     flex-shrink: 0;
   }
 
-  .mp-id-pill {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--fg-3);
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex-shrink: 1;
-  }
-
   .mp-chev {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
     color: var(--fg-3);
-    transition: transform 200ms var(--ease-spring), color 150ms;
+    transition: transform 220ms var(--ease-spring), color 150ms;
   }
 
   .mp-chev.rot {
     color: var(--fg);
-    transform: scale(1.06);
+    transform: rotate(180deg);
   }
 
   .mp-popover {
     position: absolute;
-    top: calc(100% + 6px);
+    top: calc(100% + 5px);
     left: 0;
-    width: min(520px, calc(100vw - 24px));
+    width: min(490px, calc(100vw - 24px));
     z-index: 90;
     overflow: hidden;
-    border-radius: 14px;
+    border-radius: 12px;
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow-pop);
     transform-origin: top left;
-    animation: pop-in 220ms var(--ease-spring);
   }
 
   .mp-search-bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 46px;
-    padding: 0 12px;
+    height: 40px;
+    padding: 0 10px;
     border-bottom: 1px solid var(--line);
   }
 
   .mp-search-ico {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     color: var(--fg-3);
     flex-shrink: 0;
   }
@@ -388,7 +364,7 @@
     background: transparent;
     color: var(--fg);
     font-family: var(--font-sans);
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
     outline: none;
   }
 
@@ -397,26 +373,27 @@
   }
 
   .mp-refresh {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
     border: 0;
-    border-radius: 8px;
+    border-radius: 7px;
     background: transparent;
     color: var(--fg-2);
     cursor: pointer;
-    transition: background-color 140ms, color 140ms;
+    transition: background-color 140ms, color 140ms, transform 180ms var(--ease-spring);
   }
 
   .mp-refresh:hover {
     background: var(--raised);
     color: var(--fg);
+    transform: rotate(-18deg);
   }
 
   .mp-refresh svg {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
   }
 
   .mp-refresh.spin svg {
@@ -424,17 +401,17 @@
   }
 
   .mp-list {
-    max-height: 340px;
+    max-height: 310px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 6px;
+    padding: 5px;
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
   .mp-empty {
-    padding: 28px 12px;
+    padding: 20px 12px;
     text-align: center;
     font-size: var(--text-sm);
     color: var(--fg-3);
@@ -444,21 +421,22 @@
     width: 100%;
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 9px 10px;
+    gap: 8px;
+    padding: 7px 8px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 9px;
     background: transparent;
     color: var(--fg);
     font-family: var(--font-sans);
     text-align: left;
     cursor: pointer;
-    transition: background-color 120ms var(--ease-out);
+    transition: background-color 120ms var(--ease-out), transform 140ms var(--ease-out);
   }
 
   .mp-row.focused,
   .mp-row:hover {
     background: var(--raised);
+    transform: translateX(2px);
   }
 
   .mp-row.selected {
@@ -466,8 +444,8 @@
   }
 
   .mp-check {
-    width: 16px;
-    height: 20px;
+    width: 15px;
+    height: 18px;
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -475,8 +453,8 @@
   }
 
   .mp-check svg {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
   }
 
   .mp-row-main {
@@ -484,30 +462,30 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
 
   .mp-row-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
   }
 
   .mp-row-name {
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
     color: var(--fg);
   }
 
   .mp-row-author {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--fg-3);
   }
 
   .mp-tag {
     font-size: var(--text-xs);
-    padding: 0 6px;
-    border-radius: 6px;
+    padding: 0 5px;
+    border-radius: 5px;
     background: var(--sunken);
     color: var(--fg-2);
     border: 1px solid var(--line);
@@ -536,7 +514,7 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    margin-top: 2px;
+    margin-top: 1px;
   }
 
   .mp-price {
@@ -552,8 +530,8 @@
     font-size: var(--text-xs);
     color: var(--ok);
     background: var(--ok-soft);
-    padding: 1px 6px;
-    border-radius: 6px;
+    padding: 0 6px;
+    border-radius: 5px;
     white-space: nowrap;
   }
 
@@ -568,7 +546,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 8px 14px;
+    padding: 6px 10px;
     border-top: 1px solid var(--line);
     background: var(--sunken);
     font-size: var(--text-xs);

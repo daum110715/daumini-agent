@@ -22,7 +22,7 @@
   } = $props();
 </script>
 
-<div class="col" class:open class:think={variant === 'think'} class:tool={variant === 'tool'}>
+<div class="col" class:open class:streaming class:think={variant === 'think'} class:tool={variant === 'tool'}>
   <button type="button" class="col-head" aria-expanded={open} onclick={() => (open = !open)}>
     <svg class="col-chev" class:rot={open} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="m9 18 6-6-6-6" />
@@ -41,7 +41,9 @@
 
   <div class="col-panel" class:open>
     <div class="col-inner">
-      {@render children()}
+      <div class="col-fade" class:open>
+        {@render children()}
+      </div>
     </div>
   </div>
 </div>
@@ -49,14 +51,18 @@
 <style>
   .col {
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--sunken);
     overflow: hidden;
-    transition: border-color 180ms var(--ease-out), background-color 180ms var(--ease-out);
+    transition: border-color 180ms var(--ease-out), background-color 180ms var(--ease-out), box-shadow 220ms var(--ease-out);
   }
 
   .col.tool {
     background: var(--card);
+  }
+
+  .col.streaming {
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   }
 
   .col:hover {
@@ -67,13 +73,13 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 9px 12px;
+    gap: 7px;
+    padding: 5px 9px;
     border: 0;
     background: transparent;
     color: var(--fg);
     font-family: var(--font-sans);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     text-align: left;
     cursor: pointer;
     min-width: 0;
@@ -85,11 +91,11 @@
   }
 
   .col-chev {
-    width: 15px;
-    height: 15px;
+    width: 13px;
+    height: 13px;
     flex-shrink: 0;
     color: var(--fg-3);
-    transition: transform 220ms var(--ease-spring), color 150ms;
+    transition: transform 260ms var(--ease-spring), color 150ms;
   }
 
   .col-chev.rot {
@@ -98,12 +104,12 @@
   }
 
   .col-pulse {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 999px;
     background: var(--accent);
     flex-shrink: 0;
-    animation: col-pulse 1.2s ease-in-out infinite;
+    animation: col-pulse 1.1s ease-in-out infinite;
   }
 
   .col.think .col-title {
@@ -130,10 +136,12 @@
   .col-badge {
     margin-left: auto;
     font-size: var(--text-xs);
-    padding: 1px 8px;
+    padding: 0 7px;
+    line-height: 19px;
     border-radius: 999px;
     flex-shrink: 0;
     white-space: nowrap;
+    transition: background-color 200ms, color 200ms;
   }
 
   .tone-neutral {
@@ -164,7 +172,7 @@
   .col-panel {
     display: grid;
     grid-template-rows: 0fr;
-    transition: grid-template-rows 240ms var(--ease-out);
+    transition: grid-template-rows 280ms var(--ease-out);
   }
 
   .col-panel.open {
@@ -174,6 +182,17 @@
   .col-inner {
     overflow: hidden;
     min-height: 0;
+  }
+
+  .col-fade {
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 200ms var(--ease-out), transform 240ms var(--ease-out);
+  }
+
+  .col-fade.open {
+    opacity: 1;
+    transform: translateY(0);
   }
 
   @keyframes col-pulse {

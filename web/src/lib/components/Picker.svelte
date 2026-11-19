@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { pop, popOut } from '../motion';
+
   export interface PickerOption {
     value: string;
     label: string;
@@ -29,6 +31,7 @@
   let open = $state(false);
   let activeIndex = $state(0);
   let rootEl = $state<HTMLDivElement | null>(null);
+  const listId = `pk-${Math.random().toString(36).slice(2, 8)}`;
 
   const selected = $derived(options.find((o) => o.value === value));
 
@@ -86,6 +89,7 @@
     class="picker-trigger"
     class:open
     role="combobox"
+    aria-controls={listId}
     aria-expanded={open}
     aria-haspopup="listbox"
     aria-label={ariaLabel || placeholder}
@@ -103,7 +107,14 @@
   </button>
 
   {#if open}
-    <div class="picker-menu" class:align-end={align === 'end'} role="listbox">
+    <div
+      id={listId}
+      class="picker-menu"
+      class:align-end={align === 'end'}
+      role="listbox"
+      in:pop={{ y: -5, start: 0.96, blur: 4, duration: 200 }}
+      out:popOut={{ y: -3, end: 0.97, blur: 2, duration: 120 }}
+    >
       {#each options as opt, i (opt.value)}
         <button
           type="button"
@@ -147,30 +158,28 @@
   .picker-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    height: 36px;
-    padding: 0 11px 0 12px;
-    border-radius: 8px;
+    gap: 6px;
+    height: 30px;
+    padding: 0 8px 0 10px;
+    border-radius: 7px;
     border: 1px solid var(--line);
     background: var(--field);
     color: var(--fg);
     font-family: var(--font-sans);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     cursor: pointer;
     white-space: nowrap;
     min-width: 0;
-    transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
-  }
-
-  .picker.compact .picker-trigger {
-    height: 32px;
-    padding: 0 9px 0 10px;
-    font-size: var(--text-xs);
+    transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out), transform 180ms var(--ease-spring), box-shadow 150ms var(--ease-out);
   }
 
   .picker-trigger:hover:not(:disabled),
   .picker-trigger.open {
     border-color: var(--line-strong);
+  }
+
+  .picker-trigger:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .picker-trigger:focus-visible {
@@ -191,18 +200,19 @@
 
   .picker-badge {
     font-size: var(--text-xs);
-    padding: 1px 6px;
+    padding: 0 5px;
+    line-height: 18px;
     border-radius: 999px;
     background: var(--mark-soft);
     color: var(--fg);
   }
 
   .picker-chev {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
     color: var(--fg-3);
-    transition: transform 220ms var(--ease-spring);
+    transition: transform 240ms var(--ease-spring), color 150ms;
   }
 
   .picker-chev.rot {
@@ -212,20 +222,19 @@
 
   .picker-menu {
     position: absolute;
-    top: calc(100% + 6px);
+    top: calc(100% + 5px);
     left: 0;
     min-width: max(100%, 196px);
     max-width: min(320px, calc(100vw - 24px));
-    max-height: 280px;
+    max-height: 268px;
     overflow-y: auto;
     z-index: 80;
-    padding: 5px;
-    border-radius: 12px;
+    padding: 4px;
+    border-radius: 11px;
     border: 1px solid var(--line);
     background: var(--panel);
     box-shadow: var(--shadow-pop);
     transform-origin: top left;
-    animation: pop-in 200ms var(--ease-spring);
   }
 
   .picker-menu.align-end {
@@ -238,22 +247,23 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
+    gap: 7px;
+    padding: 5px 8px;
     border: 0;
-    border-radius: 9px;
+    border-radius: 8px;
     background: transparent;
     color: var(--fg);
     font-family: var(--font-sans);
     font-size: var(--text-sm);
     text-align: left;
     cursor: pointer;
-    transition: background-color 120ms var(--ease-out);
+    transition: background-color 120ms var(--ease-out), transform 140ms var(--ease-out);
   }
 
   .picker-item.focused,
   .picker-item:hover {
     background: var(--raised);
+    transform: translateX(2px);
   }
 
   .picker-item.selected {
@@ -261,8 +271,8 @@
   }
 
   .picker-check {
-    width: 15px;
-    height: 15px;
+    width: 14px;
+    height: 14px;
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -270,8 +280,8 @@
   }
 
   .picker-check svg {
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
   }
 
   .picker-item-body {
@@ -300,8 +310,8 @@
   .picker-item-badge {
     font-size: var(--text-xs);
     color: var(--fg-2);
-    padding: 1px 6px;
-    border-radius: 6px;
+    padding: 0 5px;
+    border-radius: 5px;
     background: var(--sunken);
     flex-shrink: 0;
   }
