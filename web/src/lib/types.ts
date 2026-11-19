@@ -19,6 +19,31 @@ export interface Usage {
   output_tokens: number;
   reasoning_tokens: number;
   total_cost_nusd?: number;
+  generation_id?: string;
+  request_id?: string;
+  latency_ms?: number;
+  reconciled?: boolean;
+}
+
+export interface ModelInfo {
+  id: string;
+  name?: string;
+  author?: string;
+  description?: string;
+  context_window?: number;
+  max_output?: number;
+  supported_protocols?: string[];
+  supported_parameters?: string[];
+  reasoning_levels?: string[];
+  supports_images?: boolean;
+  supports_tools?: boolean;
+  supports_thinking?: boolean;
+  input_nusd_per_million?: number;
+  output_nusd_per_million?: number;
+  cache_read_nusd_per_million?: number;
+  cache_write_nusd_per_million?: number;
+  request_nusd?: number;
+  latency_ms?: number;
 }
 
 export interface Message {
@@ -72,6 +97,7 @@ export interface SessionMeta {
   workspace_dir: string;
   provider_id: string;
   model_id: string;
+  reasoning_effort?: string;
   approval_mode: ApprovalMode;
   parent_session_id?: string;
   forked_from_seq?: number;

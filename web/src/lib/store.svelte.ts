@@ -4,6 +4,7 @@ import type {
   ApprovalMode,
   LogEntry,
   MCPServerStatus,
+  ModelInfo,
   SessionMeta,
   SessionSnapshot,
   SkillInfo
@@ -51,6 +52,8 @@ export class AgentController {
   files = $state<string[]>([]);
   filePreview = $state<{ path: string; content: string } | null>(null);
   providerModels = $state<Record<string, string[]>>({});
+  providerCatalog = $state<Record<string, ModelInfo[]>>({});
+  loadingModels = $state<Record<string, boolean>>({});
   error = $state('');
   busy = $state(false);
   theme = $state<'light' | 'dark'>('light');
@@ -95,6 +98,10 @@ export class AgentController {
       await this.selectSession(this.sessions[0].id);
     } else {
       await this.createSession('.');
+    }
+    // Preload public daumini model catalog (capabilities, reasoning levels, cache pricing) in background.
+    if (cfg.providers.some((p) => p.id === 'daumini' && p.enabled)) {
+      void this.fetchProviderModels('daumini').catch(() => {});
     }
   }
 
@@ -184,7 +191,7 @@ export class AgentController {
     await this.selectSession(snap.meta.id);
   }
 
-  async updateSession(patch: Partial<{ provider_id: string; model_id: string; approval_mode: ApprovalMode; workspace_dir: string; archived: boolean; title: string }>) {
+  async updateSession(patch: Partial<{ provider_id: string; model_id: string; reasoning_effort: string; approval_mode: ApprovalMode; workspace_dir: string; archived: boolean; title: string }>) {
     if (!this.current) return;
     const meta = await apiJSON<SessionMeta>(`/api/sessions/${encodeURIComponent(this.current.meta.id)}`, {
       method: 'PATCH',
@@ -281,17 +288,27 @@ export class AgentController {
     if (this.current) {
       await this.updateSession({
         provider_id: 'daumini',
-        model_id: preferredModel || this.current.meta.model_id || 'deepseek/deepseek-chat'
+        model_id: preferredModel || this.current.meta.model_id || 'deepseek/deepseek-v4.1flash'
       });
     }
   }
 
   async fetchProviderModels(providerId: string) {
-    const res = await apiJSON<{ models: { id: string }[] }>(`/api/providers/${encodeURIComponent(providerId)}/models`);
-    this.providerModels = {
-      ...this.providerModels,
-      [providerId]: (res.models ?? []).map((m) => m.id)
-    };
+    this.loadingModels = { ...this.loadingModels, [providerId]: true };
+    try {
+      const res = await apiJSON<{ models: ModelInfo[] }>(`/api/providers/${encodeURIComponent(providerId)}/models`);
+      const list = res.models ?? [];
+      this.providerCatalog = {
+        ...this.providerCatalog,
+        [providerId]: list
+      };
+      this.providerModels = {
+        ...this.providerModels,
+        [providerId]: list.map((m) => m.id)
+      };
+    } finally {
+      this.loadingModels = { ...this.loadingModels, [providerId]: false };
+    }
   }
 
   async reloadMCP() {

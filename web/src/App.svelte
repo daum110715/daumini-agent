@@ -2,9 +2,12 @@
   import { onMount, tick } from 'svelte';
   import { AgentController } from './lib/store.svelte';
   import { renderMarkdown } from './lib/markdown';
+  import Collapsible from './lib/components/Collapsible.svelte';
+  import ModelPicker from './lib/components/ModelPicker.svelte';
+  import Picker from './lib/components/Picker.svelte';
   import Segmented from './lib/components/Segmented.svelte';
   import Wordmark from './lib/components/Wordmark.svelte';
-  import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ProviderConfig, Run, Usage } from './lib/types';
+  import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ModelInfo, ProviderConfig, Run, Usage } from './lib/types';
 
   const ctrl = new AgentController();
 
@@ -50,6 +53,8 @@
   let feedEl = $state<HTMLDivElement | null>(null);
   let composerEl = $state<HTMLTextAreaElement | null>(null);
   let userScrolledUp = false;
+  let fileFilter = $state('');
+  let slashIndex = $state(0);
 
   // Gliding marker for sidebar navigation
   const navItems: { id: 'work' | 'providers' | 'extensions'; label: string }[] = [
@@ -147,13 +152,74 @@
 
   const dauminiProvider = $derived(ctrl.config?.providers.find((p) => p.id === 'daumini'));
   const dauminiConnected = $derived(Boolean(dauminiProvider?.api_key));
+  const dauminiBase = $derived((dauminiProvider?.base_url || 'https://mini.daum.pw').replace(/\/+$/, ''));
   const currentProvider = $derived(
     ctrl.config?.providers.find((p) => p.id === ctrl.current?.meta.provider_id)
   );
   const currentProviderReady = $derived(Boolean(currentProvider?.api_key));
-  const currentModelSuggestions = $derived(
-    ctrl.current ? (ctrl.providerModels[ctrl.current.meta.provider_id] ?? []) : []
+  const currentCatalog = $derived<ModelInfo[]>(
+    ctrl.current ? (ctrl.providerCatalog[ctrl.current.meta.provider_id] ?? []) : []
   );
+  const currentFallbackModels = $derived<string[]>(
+    currentProvider?.models ?? (currentProvider?.default_model ? [currentProvider.default_model] : [])
+  );
+  const activeModelInfo = $derived<ModelInfo | undefined>(
+    ctrl.current ? currentCatalog.find((m) => m.id === ctrl.current?.meta.model_id) : undefined
+  );
+  const providerOptions = $derived(
+    (ctrl.config?.providers ?? []).map((p) => ({
+      value: p.id,
+      label: p.name,
+      sub: p.protocol === 'daumini' ? (p.user_email || p.base_url) : p.base_url,
+      badge: p.api_key ? '已连' : undefined
+    }))
+  );
+  const reasoningOptions = $derived.by(() => {
+    const levels = activeModelInfo?.reasoning_levels?.length
+      ? activeModelInfo.reasoning_levels
+      : activeModelInfo?.supports_thinking
+        ? ['low', 'medium', 'high']
+        : [];
+    if (levels.length === 0) return [];
+    const labelMap: Record<string, string> = {
+      low: '思考 低',
+      medium: '思考 中',
+      high: '思考 高',
+      max: '思考 极高'
+    };
+    return [
+      { value: '', label: '思考 默认', sub: '跟随模型默认' },
+      { value: 'off', label: '思考 关闭', sub: '跳过推理过程' },
+      ...levels.map((lv) => ({ value: lv, label: labelMap[lv] || `思考 ${lv}`, sub: `reasoning_effort: ${lv}` }))
+    ];
+  });
+  const filteredFiles = $derived.by(() => {
+    const q = fileFilter.trim().toLowerCase();
+    if (!q) return ctrl.files;
+    return ctrl.files.filter((f) => f.toLowerCase().includes(q));
+  });
+
+  interface SlashCommand {
+    cmd: string;
+    label: string;
+    desc: string;
+    run: () => void;
+  }
+
+  const allSlashCommands: SlashCommand[] = [
+    { cmd: '/new', label: '/new', desc: '新建空白会话', run: () => void handleQuickNewSession() },
+    { cmd: '/fork', label: '/fork', desc: '分叉当前会话', run: () => void ctrl.forkSession(0) },
+    { cmd: '/login', label: '/login', desc: '一键授权登录 daumini', run: () => void triggerOneClickOAuth() },
+    { cmd: '/providers', label: '/providers', desc: '管理模型与渠道', run: () => switchTab('providers') },
+    { cmd: '/extensions', label: '/extensions', desc: '查看 MCP 技能与日志', run: () => switchTab('extensions') },
+    { cmd: '/theme', label: '/theme', desc: '切换浅色深色主题', run: () => withTransition(() => ctrl.toggleTheme()) }
+  ];
+
+  const slashMatches = $derived.by(() => {
+    if (!promptText.startsWith('/') || promptText.includes('\n') || promptText.includes(' ')) return [];
+    const q = promptText.toLowerCase();
+    return allSlashCommands.filter((c) => c.cmd.startsWith(q));
+  });
 
   const isRunning = $derived(Boolean(ctrl.current?.meta.active_run_id));
   const pendingApprovals = $derived(
@@ -227,11 +293,56 @@
     }
   }
 
-  function cachePct(u?: Usage | null): string {
-    if (!u) return '0%';
+  function cacheRatio(u?: Usage | null): number {
+    if (!u) return 0;
     const total = (u.input_tokens || 0) + (u.cache_read_tokens || 0) + (u.cache_write_tokens || 0);
-    if (total <= 0) return '0%';
-    return `${Math.round(((u.cache_read_tokens || 0) / total) * 100)}%`;
+    if (total <= 0) return 0;
+    return Math.min(100, Math.round(((u.cache_read_tokens || 0) / total) * 100));
+  }
+
+  function cachePct(u?: Usage | null): string {
+    return `${cacheRatio(u)}%`;
+  }
+
+  function fmtPriceM(nusd?: number): string {
+    if (!nusd || nusd <= 0) return '—';
+    const usd = nusd / 1e9;
+    return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
+  }
+
+  function speakerName(modelId?: string): string {
+    const id = modelId || ctrl.current?.meta.model_id || '';
+    const info = currentCatalog.find((m) => m.id === id);
+    return info?.name || id;
+  }
+
+  function toolSummary(name?: string, input?: unknown): string {
+    if (!input || typeof input !== 'object') return '';
+    const obj = input as Record<string, unknown>;
+    if (typeof obj.path === 'string' && obj.path) {
+      const sl = typeof obj.start_line === 'number' ? `:${obj.start_line}` : '';
+      return `${obj.path}${sl}`;
+    }
+    if (typeof obj.command === 'string' && obj.command) {
+      return obj.command.length > 52 ? `${obj.command.slice(0, 52)}...` : obj.command;
+    }
+    if (typeof obj.query === 'string' && obj.query) return obj.query;
+    if (typeof obj.pattern === 'string' && obj.pattern) return obj.pattern;
+    if (name === 'todo_update' && Array.isArray(obj.todos)) return `${obj.todos.length} 项任务`;
+    return '';
+  }
+
+  function insertFileRef(filePath: string) {
+    const ref = `\`${filePath}\``;
+    promptText = promptText.trim() ? `${promptText.trimEnd()} ${ref} ` : `请查看 ${ref} `;
+    composerEl?.focus();
+    showToast(`已引用 ${filePath}`);
+  }
+
+  function runSlash(cmd: SlashCommand) {
+    promptText = '';
+    slashIndex = 0;
+    cmd.run();
   }
 
   function totalIn(u?: Usage | null): number {
@@ -710,34 +821,39 @@
 
         {#if ctrl.current}
           <div class="topbar-actions">
-            <select
-              class="field-quiet border-line"
+            <Picker
+              ariaLabel="切换渠道"
               value={ctrl.current.meta.provider_id}
-              onchange={(e) => {
-                const pid = (e.target as HTMLSelectElement).value;
+              options={providerOptions}
+              onChange={(pid) => {
                 const prov = ctrl.config?.providers.find((p) => p.id === pid);
-                void ctrl.updateSession({ provider_id: pid, model_id: prov?.default_model || ctrl.current?.meta.model_id });
-                if (prov?.api_key) void ctrl.fetchProviderModels(pid).catch(() => {});
+                const cachedModels = ctrl.providerCatalog[pid] ?? [];
+                const nextModel = prov?.default_model || cachedModels[0]?.id || ctrl.current?.meta.model_id || '';
+                void ctrl.updateSession({ provider_id: pid, model_id: nextModel, reasoning_effort: '' });
+                if (pid === 'daumini' || prov?.api_key) {
+                  void ctrl.fetchProviderModels(pid).catch(() => {});
+                }
               }}
-            >
-              {#each ctrl.config?.providers ?? [] as p (p.id)}
-                <option value={p.id} selected={p.id === ctrl.current.meta.provider_id}>{p.name}</option>
-              {/each}
-            </select>
-
-            <input
-              class="field-quiet border-line"
-              style="width: 210px; font-family: var(--font-mono); font-size: 13px;"
-              list="model-suggestions"
-              value={ctrl.current.meta.model_id}
-              onchange={(e) => void ctrl.updateSession({ model_id: (e.target as HTMLInputElement).value })}
-              placeholder="模型 ID"
             />
-            <datalist id="model-suggestions">
-              {#each currentModelSuggestions as m}
-                <option value={m}></option>
-              {/each}
-            </datalist>
+
+            <ModelPicker
+              models={currentCatalog}
+              fallbackIds={currentFallbackModels}
+              value={ctrl.current.meta.model_id}
+              loading={Boolean(ctrl.loadingModels[ctrl.current.meta.provider_id])}
+              onChange={(mid) => void ctrl.updateSession({ model_id: mid })}
+              onRefresh={() => ctrl.current && void ctrl.fetchProviderModels(ctrl.current.meta.provider_id).catch((e) => (ctrl.error = String(e)))}
+            />
+
+            {#if reasoningOptions.length > 0}
+              <Picker
+                compact
+                ariaLabel="推理强度"
+                value={ctrl.current.meta.reasoning_effort || ''}
+                options={reasoningOptions}
+                onChange={(eff) => void ctrl.updateSession({ reasoning_effort: eff })}
+              />
+            {/if}
 
             <Segmented
               size="sm"
@@ -869,29 +985,33 @@
                     <span class="knot-dot"></span>
                   </span>
                   <div class="assistant-body">
-                    <div class="assistant-speaker">{msg.model_id || ctrl.current.meta.model_id}</div>
+                    <div class="assistant-speaker">{speakerName(msg.model_id)}</div>
                     {#each msg.blocks ?? [] as b}
                       {#if b.type === 'thinking' && b.thinking}
-                        <details class="think-box border-line">
-                          <summary>思考过程 {b.thinking.length} 字</summary>
-                          <div style="margin-top: 8px; white-space: pre-wrap; line-height: 1.7; color: var(--fg-2);">{b.thinking}</div>
-                        </details>
+                        <Collapsible variant="think" title="思考过程" badge={`${b.thinking.length} 字`}>
+                          <div class="col-body-think">{b.thinking}</div>
+                        </Collapsible>
                       {:else if b.type === 'text' && b.text}
                         <div class="md-prose">{@html renderMarkdown(b.text)}</div>
                       {:else if b.type === 'tool_use'}
                         {@const res = b.id ? toolResultsMap[b.id] : undefined}
-                        <details class="tool-card border-line">
-                          <summary class="tool-head">
-                            <span class="tool-name">{b.name}</span>
-                            <span class="tag {res?.is_error ? 'bad' : res ? 'ok' : 'mark'}">
-                              {res ? (res.is_error ? '报错' : '完成') : '执行中'}
-                            </span>
-                          </summary>
-                          <pre class="code-surface">{fmtJSON(b.input)}</pre>
-                          {#if res}
-                            <pre class="code-surface">{res.text}</pre>
-                          {/if}
-                        </details>
+                        <Collapsible
+                          variant="tool"
+                          title={b.name || 'tool'}
+                          subtitle={toolSummary(b.name, b.input)}
+                          badge={res ? (res.is_error ? '报错' : '完成') : '执行中'}
+                          badgeTone={res ? (res.is_error ? 'bad' : 'ok') : 'warn'}
+                          streaming={!res}
+                        >
+                          <div class="col-body-tool">
+                            <div class="col-sec-label">参数</div>
+                            <pre class="code-surface">{fmtJSON(b.input)}</pre>
+                            {#if res}
+                              <div class="col-sec-label">{res.is_error ? '错误输出' : '返回结果'}</div>
+                              <pre class="code-surface">{res.text}</pre>
+                            {/if}
+                          </div>
+                        </Collapsible>
                       {/if}
                     {/each}
                     {#if msg.usage || plainText}
@@ -901,7 +1021,20 @@
                           <span>输入 {fmtNum(totalIn(msg.usage))}</span>
                           <span>输出 {fmtNum(msg.usage.output_tokens)}</span>
                           {#if msg.usage.total_cost_nusd}
-                            <span>{fmtCost(msg.usage.total_cost_nusd)}</span>
+                            <span class="usage-cost">{fmtCost(msg.usage.total_cost_nusd)}</span>
+                          {/if}
+                          {#if msg.usage.latency_ms}
+                            <span>{(msg.usage.latency_ms / 1000).toFixed(1)}s</span>
+                          {/if}
+                          {#if msg.provider_id === 'daumini' && msg.usage.generation_id && msg.usage.generation_id.startsWith('gen_')}
+                            <a
+                              class="usage-link"
+                              href={`${dauminiBase}/console/generations?selected=${encodeURIComponent(msg.usage.generation_id)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              查看费用与路由
+                            </a>
                           {/if}
                         {/if}
                         {#if plainText}
@@ -951,31 +1084,39 @@
                   <span class="knot-dot"></span>
                 </span>
                 <div class="assistant-body">
-                  <div class="assistant-speaker">{ctrl.current.meta.model_id}</div>
+                  <div class="assistant-speaker">{speakerName(ctrl.current.meta.model_id)}</div>
                   {#if ctrl.activeStreamThinking}
-                    <details class="think-box border-line" open>
-                      <summary>正在思考</summary>
-                      <div style="margin-top: 8px; white-space: pre-wrap; line-height: 1.7; color: var(--fg-2);">{ctrl.activeStreamThinking}</div>
-                    </details>
+                    <Collapsible open={true} variant="think" title="正在思考" badge={`${ctrl.activeStreamThinking.length} 字`} streaming={true}>
+                      <div class="col-body-think">{ctrl.activeStreamThinking}</div>
+                    </Collapsible>
                   {/if}
                   {#if ctrl.activeStreamText}
                     <div class="md-prose">{@html renderMarkdown(ctrl.activeStreamText)}<span class="caret" aria-hidden="true"></span></div>
                   {:else if !ctrl.activeStreamThinking && Object.keys(ctrl.activeTools).length === 0}
-                    <div style="font-size: var(--text-base); color: var(--fg-3);">正在响应</div>
+                    <div class="streaming-wait">
+                      <span class="wait-dot"></span>
+                      <span>正在等待模型响应</span>
+                    </div>
                   {/if}
                   {#each Object.entries(ctrl.activeTools) as [tid, t] (tid)}
-                    <div class="tool-card border-line">
-                      <div class="tool-head">
-                        <span class="tool-name">{t.name}</span>
-                        <span class="tag {t.output ? (t.is_error ? 'bad' : 'ok') : 'mark'}">
-                          {t.output ? `${t.duration_ms ?? 0}ms` : '运行中'}
-                        </span>
+                    <Collapsible
+                      open={!t.output}
+                      variant="tool"
+                      title={t.name}
+                      subtitle={toolSummary(t.name, t.input)}
+                      badge={t.output ? `${t.duration_ms ?? 0}ms` : '运行中'}
+                      badgeTone={t.output ? (t.is_error ? 'bad' : 'ok') : 'accent'}
+                      streaming={!t.output}
+                    >
+                      <div class="col-body-tool">
+                        <div class="col-sec-label">参数</div>
+                        <pre class="code-surface">{fmtJSON(t.input)}</pre>
+                        {#if t.output}
+                          <div class="col-sec-label">{t.is_error ? '错误输出' : '返回结果'}</div>
+                          <pre class="code-surface">{t.output}</pre>
+                        {/if}
                       </div>
-                      <pre class="code-surface">{fmtJSON(t.input)}</pre>
-                      {#if t.output}
-                        <pre class="code-surface">{t.output}</pre>
-                      {/if}
-                    </div>
+                    </Collapsible>
                   {/each}
                 </div>
               </div>
@@ -1004,44 +1145,90 @@
       {/if}
 
       <div class="composer-area">
-        <div class="composer-box border-line-strong">
-          {#if isRunning}
-            <span class="composer-scan" aria-hidden="true"><span class="composer-scan-bar"></span></span>
-          {/if}
-          <textarea
-            bind:this={composerEl}
-            class="composer-input"
-            bind:value={promptText}
-            placeholder={currentProviderReady ? '输入任务或指令' : '输入任务或指令（先登录 daumini 或配置密钥）'}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend('queue');
-              }
-            }}
-          ></textarea>
-          <div class="composer-bar">
-            <div class="composer-stats">
-              {#if ctrl.current}
-                <span class="marked">缓存 {cachePct(ctrl.current.meta.total_usage)}</span>
-                <span>输入 {fmtNum(totalIn(ctrl.current.meta.total_usage))}</span>
-                <span>输出 {fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
-              {/if}
+        <div class="composer-wrap">
+          {#if slashMatches.length > 0}
+            <div class="slash-menu" role="listbox" aria-label="快捷命令">
+              {#each slashMatches as item, idx (item.cmd)}
+                <button
+                  type="button"
+                  class="slash-item"
+                  class:focused={idx === slashIndex}
+                  onmouseenter={() => (slashIndex = idx)}
+                  onclick={() => runSlash(item)}
+                >
+                  <code class="slash-cmd">{item.label}</code>
+                  <span class="slash-desc">{item.desc}</span>
+                </button>
+              {/each}
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="kbd">Enter</span>
-              {#if isRunning}
-                <button type="button" class="wobble btn btn-sm btn-quiet border-line" onclick={() => void handleSend('steer')}>插队</button>
-                <button type="button" class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>
-                  <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                  <span>停止</span>
-                </button>
-              {:else}
-                <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>
-                  <span>发送</span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
-                </button>
-              {/if}
+          {/if}
+
+          <div class="composer-box border-line-strong">
+            {#if isRunning}
+              <span class="composer-scan" aria-hidden="true"><span class="composer-scan-bar"></span></span>
+            {/if}
+            <textarea
+              bind:this={composerEl}
+              class="composer-input"
+              bind:value={promptText}
+              placeholder={currentProviderReady ? '输入任务或指令，键入 / 查看快捷命令' : '输入任务或指令（先一键登录 daumini 或配置密钥）'}
+              oninput={() => (slashIndex = 0)}
+              onkeydown={(e) => {
+                if (slashMatches.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    slashIndex = (slashIndex + 1) % slashMatches.length;
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    slashIndex = (slashIndex - 1 + slashMatches.length) % slashMatches.length;
+                    return;
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    runSlash(slashMatches[slashIndex] ?? slashMatches[0]);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    promptText = '';
+                    return;
+                  }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend('queue');
+                }
+              }}
+            ></textarea>
+            <div class="composer-bar">
+              <div class="composer-stats">
+                {#if ctrl.current}
+                  <span class="marked">缓存 {cachePct(ctrl.current.meta.total_usage)}</span>
+                  <span>输入 {fmtNum(totalIn(ctrl.current.meta.total_usage))}</span>
+                  <span>输出 {fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
+                  {#if ctrl.current.meta.total_usage.total_cost_nusd}
+                    <span>{fmtCost(ctrl.current.meta.total_usage.total_cost_nusd)}</span>
+                  {/if}
+                {/if}
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="kbd">/</span>
+                <span class="kbd">Enter</span>
+                {#if isRunning}
+                  <button type="button" class="wobble btn btn-sm btn-quiet border-line" onclick={() => void handleSend('steer')}>插队</button>
+                  <button type="button" class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    <span>停止</span>
+                  </button>
+                {:else}
+                  <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>
+                    <span>发送</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                  </button>
+                {/if}
+              </div>
             </div>
           </div>
         </div>
@@ -1147,10 +1334,15 @@
             </div>
             <div class="form-grid">
               <input class="field border-line" bind:value={mcpName} placeholder="服务名称" />
-              <select class="field border-line" bind:value={mcpTransport}>
-                <option value="stdio">Stdio 本地进程</option>
-                <option value="http">Streamable HTTP</option>
-              </select>
+              <Picker
+                ariaLabel="传输方式"
+                value={mcpTransport}
+                options={[
+                  { value: 'stdio', label: 'Stdio 本地进程', sub: '标准输入输出子进程' },
+                  { value: 'http', label: 'Streamable HTTP', sub: '远程或本地 HTTP 端点' }
+                ]}
+                onChange={(v) => (mcpTransport = v as 'stdio' | 'http')}
+              />
               {#if mcpTransport === 'stdio'}
                 <input class="field border-line" bind:value={mcpCommand} placeholder="可执行命令" />
                 <input class="field border-line" bind:value={mcpArgs} placeholder="参数 空格分隔" />
@@ -1220,6 +1412,9 @@
           <span>缓存与用量</span>
           <span class="tnum marked" style="font-size: var(--text-xl); color: var(--fg);">{cachePct(ctrl.current.meta.total_usage)}</span>
         </div>
+        <div class="cache-meter" aria-label="缓存命中率进度条">
+          <span class="cache-meter-fill" style:width={`${cacheRatio(ctrl.current.meta.total_usage)}%`}></span>
+        </div>
         <div class="stat-grid border-line">
           <div class="stat-cell">
             <span class="stat-label">总输入</span>
@@ -1230,19 +1425,40 @@
             <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.cache_read_tokens)}</span>
           </div>
           <div class="stat-cell">
-            <span class="stat-label">缓存写入</span>
-            <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.cache_write_tokens)}</span>
-          </div>
-          <div class="stat-cell">
             <span class="stat-label">总输出</span>
             <span class="stat-val">{fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
           </div>
+          <div class="stat-cell">
+            <span class="stat-label">累计费用</span>
+            <span class="stat-val">{ctrl.current.meta.total_usage.total_cost_nusd ? fmtCost(ctrl.current.meta.total_usage.total_cost_nusd) : '$0.0000'}</span>
+          </div>
         </div>
+        {#if activeModelInfo}
+          <div class="model-meta-box">
+            <div class="model-meta-name">{activeModelInfo.name || activeModelInfo.id}</div>
+            <div class="model-meta-tags">
+              {#if activeModelInfo.context_window}
+                <span class="tag">{activeModelInfo.context_window >= 1_000_000 ? `${(activeModelInfo.context_window / 1_000_000).toFixed(0)}M` : `${Math.round(activeModelInfo.context_window / 1000)}K`} 上下文</span>
+              {/if}
+              {#if activeModelInfo.supports_thinking}
+                <span class="tag ok">支持思考</span>
+              {/if}
+              {#if activeModelInfo.cache_read_nusd_per_million}
+                <span class="tag mark">缓存 {fmtPriceM(activeModelInfo.cache_read_nusd_per_million)}/M</span>
+              {/if}
+            </div>
+            {#if activeModelInfo.input_nusd_per_million}
+              <div class="model-meta-price">
+                输入 {fmtPriceM(activeModelInfo.input_nusd_per_million)} · 输出 {fmtPriceM(activeModelInfo.output_nusd_per_million)} / M
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
 
       <div class="inspector-section-grow">
         <div class="inspector-head">
-          <span>工作区文件</span>
+          <span>工作区文件 ({filteredFiles.length})</span>
           <button
             type="button"
             class="wobble btn btn-icon-sm btn-ghost"
@@ -1254,26 +1470,54 @@
           </button>
         </div>
 
+        <input
+          class="file-filter-input"
+          bind:value={fileFilter}
+          placeholder="筛选工作区文件"
+          aria-label="筛选工作区文件"
+        />
+
         <div class="inspector-files">
-          {#each ctrl.files as f}
-            <button type="button" class="file-row" onclick={() => void ctrl.readFile(f)}>
-              {#if f.endsWith('/')}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-              {:else}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+          {#each filteredFiles as f}
+            <div class="file-row-wrap">
+              <button
+                type="button"
+                class="file-row"
+                class:active={ctrl.filePreview?.path === f}
+                onclick={() => !f.endsWith('/') && void ctrl.readFile(f)}
+              >
+                {#if f.endsWith('/')}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                {:else}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+                {/if}
+                <span>{f}</span>
+              </button>
+              {#if !f.endsWith('/')}
+                <button
+                  type="button"
+                  class="file-ref-btn"
+                  title="引用文件路径到输入框"
+                  onclick={() => insertFileRef(f)}
+                >
+                  @
+                </button>
               {/if}
-              <span>{f}</span>
-            </button>
+            </div>
           {/each}
         </div>
 
         {#if ctrl.filePreview}
-          <div class="border-line" style="padding: 10px; border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 6px; animation: pop-in 0.22s var(--ease-out);">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-              <span style="font-family: var(--font-mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{ctrl.filePreview.path}</span>
-              <button type="button" class="wobble btn btn-xs btn-ghost" onclick={() => (ctrl.filePreview = null)}>关闭</button>
+          <div class="file-preview border-line">
+            <div class="file-preview-head">
+              <span class="file-preview-path" title={ctrl.filePreview.path}>{ctrl.filePreview.path}</span>
+              <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                <button type="button" class="wobble btn btn-xs btn-ghost" onclick={() => ctrl.filePreview && insertFileRef(ctrl.filePreview.path)}>引用</button>
+                <button type="button" class="wobble btn btn-xs btn-ghost" onclick={() => ctrl.filePreview && void copyText(ctrl.filePreview.content, '已复制文件内容')}>复制</button>
+                <button type="button" class="wobble btn btn-xs btn-ghost" onclick={() => (ctrl.filePreview = null)}>关闭</button>
+              </div>
             </div>
-            <pre class="code-surface" style="max-height: 210px;">{ctrl.filePreview.content}</pre>
+            <pre class="code-surface file-preview-code">{ctrl.filePreview.content}</pre>
           </div>
         {/if}
       </div>

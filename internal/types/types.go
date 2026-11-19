@@ -55,6 +55,8 @@ type Usage struct {
 	ReasoningTokens  int64  `json:"reasoning_tokens"`
 	TotalCostNUSD    int64  `json:"total_cost_nusd,omitempty"`
 	GenerationID     string `json:"generation_id,omitempty"`
+	RequestID        string `json:"request_id,omitempty"`
+	LatencyMS        int64  `json:"latency_ms,omitempty"`
 	Reconciled       bool   `json:"reconciled,omitempty"`
 }
 
@@ -172,6 +174,7 @@ type SessionMeta struct {
 	WorkspaceDir     string       `json:"workspace_dir"`
 	ProviderID       string       `json:"provider_id"`
 	ModelID          string       `json:"model_id"`
+	ReasoningEffort  string       `json:"reasoning_effort,omitempty"`
 	ApprovalMode     ApprovalMode `json:"approval_mode"`
 	ParentSessionID  string       `json:"parent_session_id,omitempty"`
 	ForkedFromSeq    int64        `json:"forked_from_seq,omitempty"`

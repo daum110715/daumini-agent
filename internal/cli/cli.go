@@ -562,7 +562,7 @@ func handleSlash(line string, meta types.SessionMeta, pal Palette, cfgMgr *confi
 				modID = m
 			}
 		}
-		m, err := mgr.UpdateSessionSettings(meta.ID, provID, modID, "", "", nil, "")
+		m, err := mgr.UpdateSessionSettings(meta.ID, provID, modID, nil, "", "", nil, "")
 		if err != nil {
 			fmt.Println(pal.Paint(pal.Error, err.Error()))
 		} else {
@@ -576,7 +576,7 @@ func handleSlash(line string, meta types.SessionMeta, pal Palette, cfgMgr *confi
 			fmt.Println(pal.Paint(pal.Warn, "可选模式: ask, auto_read, yolo"))
 			return true, false, nextMeta, nextPal
 		}
-		m, err := mgr.UpdateSessionSettings(meta.ID, "", "", mode, "", nil, "")
+		m, err := mgr.UpdateSessionSettings(meta.ID, "", "", nil, mode, "", nil, "")
 		if err != nil {
 			fmt.Println(pal.Paint(pal.Error, err.Error()))
 		} else {

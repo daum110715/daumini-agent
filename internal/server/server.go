@@ -238,6 +238,9 @@ func (s *Server) handleDauminiLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if synced, ok := s.syncDauminiModels(r.Context()); ok {
+		updated = synced
+	}
 	writeJSON(w, http.StatusOK, config.RedactedConfig(updated))
 }
 
@@ -305,6 +308,9 @@ func (s *Server) handleDauminiKey(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if synced, ok := s.syncDauminiModels(r.Context()); ok {
+		updated = synced
 	}
 	writeJSON(w, http.StatusOK, config.RedactedConfig(updated))
 }
@@ -419,7 +425,42 @@ func (s *Server) handleDauminiAuthCallback(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, "/?auth_error="+url.QueryEscape(err.Error()), http.StatusFound)
 		return
 	}
+	_, _ = s.syncDauminiModels(r.Context())
 	http.Redirect(w, r, "/?auth=ok", http.StatusFound)
+}
+
+func (s *Server) syncDauminiModels(ctx context.Context) (config.Config, bool) {
+	models, err := s.mgr.ListModels(ctx, "daumini")
+	if err != nil || len(models) == 0 {
+		return config.Config{}, false
+	}
+	ids := make([]string, 0, len(models))
+	idSet := make(map[string]struct{}, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+		idSet[m.ID] = struct{}{}
+	}
+	updated, err := s.cfgMgr.Update(func(c *config.Config) error {
+		for i := range c.Providers {
+			if c.Providers[i].ID == "daumini" {
+				c.Providers[i].Models = ids
+				if _, ok := idSet[c.Providers[i].DefaultModel]; !ok {
+					c.Providers[i].DefaultModel = ids[0]
+				}
+				if c.DefaultProvider == "daumini" {
+					if _, ok := idSet[c.DefaultModel]; !ok {
+						c.DefaultModel = c.Providers[i].DefaultModel
+					}
+				}
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return config.Config{}, false
+	}
+	return updated, true
 }
 
 func ExchangeDauminiAuthCode(ctx context.Context, baseURL, code, verifier, redirectURI string) (string, string, error) {
@@ -582,18 +623,19 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePatchSession(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		ProviderID   string             `json:"provider_id"`
-		ModelID      string             `json:"model_id"`
-		ApprovalMode types.ApprovalMode `json:"approval_mode"`
-		WorkspaceDir string             `json:"workspace_dir"`
-		Archived     *bool              `json:"archived"`
-		Title        string             `json:"title"`
+		ProviderID      string             `json:"provider_id"`
+		ModelID         string             `json:"model_id"`
+		ReasoningEffort *string            `json:"reasoning_effort"`
+		ApprovalMode    types.ApprovalMode `json:"approval_mode"`
+		WorkspaceDir    string             `json:"workspace_dir"`
+		Archived        *bool              `json:"archived"`
+		Title           string             `json:"title"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	meta, err := s.mgr.UpdateSessionSettings(r.PathValue("id"), in.ProviderID, in.ModelID, in.ApprovalMode, in.WorkspaceDir, in.Archived, in.Title)
+	meta, err := s.mgr.UpdateSessionSettings(r.PathValue("id"), in.ProviderID, in.ModelID, in.ReasoningEffort, in.ApprovalMode, in.WorkspaceDir, in.Archived, in.Title)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

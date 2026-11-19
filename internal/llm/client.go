@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/daum110715/daumini-agent/internal/config"
@@ -24,14 +25,15 @@ type StreamCallbacks struct {
 }
 
 type GenerateRequest struct {
-	Provider      config.ProviderConfig
-	ModelID       string
-	SystemPrompt  string
-	Messages      []types.Message
-	Tools         []tools.ToolSpec
-	PromptCacheKey string
-	MaxTokens     int
-	Callbacks     StreamCallbacks
+	Provider        config.ProviderConfig
+	ModelID         string
+	ReasoningEffort string
+	SystemPrompt    string
+	Messages        []types.Message
+	Tools           []tools.ToolSpec
+	PromptCacheKey  string
+	MaxTokens       int
+	Callbacks       StreamCallbacks
 }
 
 type GenerateResponse struct {
@@ -42,19 +44,60 @@ type GenerateResponse struct {
 }
 
 type ModelInfo struct {
-	ID            string `json:"id"`
-	Name          string `json:"name,omitempty"`
-	ContextWindow int64  `json:"context_window,omitempty"`
-	MaxOutput     int    `json:"max_output,omitempty"`
+	ID                       string   `json:"id"`
+	Name                     string   `json:"name,omitempty"`
+	Author                   string   `json:"author,omitempty"`
+	Description              string   `json:"description,omitempty"`
+	ContextWindow            int64    `json:"context_window,omitempty"`
+	MaxOutput                int      `json:"max_output,omitempty"`
+	SupportedProtocols       []string `json:"supported_protocols,omitempty"`
+	SupportedParameters      []string `json:"supported_parameters,omitempty"`
+	ReasoningLevels          []string `json:"reasoning_levels,omitempty"`
+	SupportsImages           bool     `json:"supports_images,omitempty"`
+	SupportsTools            bool     `json:"supports_tools,omitempty"`
+	SupportsThinking         bool     `json:"supports_thinking,omitempty"`
+	InputNUSDPerMillion      int64    `json:"input_nusd_per_million,omitempty"`
+	OutputNUSDPerMillion     int64    `json:"output_nusd_per_million,omitempty"`
+	CacheReadNUSDPerMillion  int64    `json:"cache_read_nusd_per_million,omitempty"`
+	CacheWriteNUSDPerMillion int64    `json:"cache_write_nusd_per_million,omitempty"`
+	RequestNUSD              int64    `json:"request_nusd,omitempty"`
+	LatencyMS                int64    `json:"latency_ms,omitempty"`
+}
+
+func (m ModelInfo) HasParam(name string) bool {
+	for _, p := range m.SupportedParameters {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (m ModelInfo) HasProtocol(name string) bool {
+	for _, p := range m.SupportedProtocols {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+type cachedCatalog struct {
+	models    []ModelInfo
+	byID      map[string]ModelInfo
+	fetchedAt time.Time
 }
 
 type Client struct {
-	http *http.Client
+	http  *http.Client
+	mu    sync.RWMutex
+	cache map[string]cachedCatalog
 }
 
 func NewClient() *Client {
 	return &Client{
-		http: &http.Client{Timeout: 0},
+		http:  &http.Client{Timeout: 0},
+		cache: make(map[string]cachedCatalog),
 	}
 }
 
@@ -70,24 +113,31 @@ func (c *Client) Generate(ctx context.Context, req GenerateRequest) (GenerateRes
 	if modelID == "" {
 		return GenerateResponse{}, fmt.Errorf("no model specified for provider %q", req.Provider.ID)
 	}
-	if req.MaxTokens <= 0 {
-		req.MaxTokens = 8192
-	}
 
+	var meta *ModelInfo
 	proto := req.Provider.Protocol
 	if proto == config.ProtocolDaumini {
-		proto = c.resolveDauminiProtocol(ctx, req.Provider, modelID)
+		resolvedProto, info := c.resolveDauminiTarget(ctx, req.Provider, modelID)
+		proto = resolvedProto
+		meta = info
+	}
+
+	if req.MaxTokens <= 0 {
+		req.MaxTokens = 16384
+	}
+	if meta != nil && meta.MaxOutput > 0 && req.MaxTokens > meta.MaxOutput {
+		req.MaxTokens = meta.MaxOutput
 	}
 
 	switch proto {
 	case config.ProtocolAnthropic:
-		return c.streamAnthropic(ctx, req, apiKey, modelID)
+		return c.streamAnthropic(ctx, req, apiKey, modelID, meta)
 	case config.ProtocolOpenAIResponses:
-		return c.streamOpenAIResponses(ctx, req, apiKey, modelID)
+		return c.streamOpenAIResponses(ctx, req, apiKey, modelID, meta)
 	case config.ProtocolDeepSeek:
-		return c.streamOpenAIChat(ctx, req, apiKey, modelID, true)
+		return c.streamOpenAIChat(ctx, req, apiKey, modelID, true, meta)
 	default:
-		return c.streamOpenAIChat(ctx, req, apiKey, modelID, false)
+		return c.streamOpenAIChat(ctx, req, apiKey, modelID, false, meta)
 	}
 }
 
@@ -142,76 +192,206 @@ func (c *Client) ListModels(ctx context.Context, p config.ProviderConfig) ([]Mod
 	}
 	var parsed struct {
 		Data []struct {
-			ID            string `json:"id"`
-			Name          string `json:"name"`
-			ContextLength int64  `json:"context_length"`
+			ID                  string   `json:"id"`
+			Name                string   `json:"name"`
+			Author              string   `json:"author"`
+			Description         string   `json:"description"`
+			ContextLength       int64    `json:"context_length"`
+			InputModalities     []string `json:"input_modalities"`
+			SupportedParameters []string `json:"supported_parameters"`
+			Capabilities        *struct {
+				MaxOutputTokens int      `json:"max_output_tokens"`
+				ReasoningLevels []string `json:"reasoning_levels"`
+			} `json:"capabilities"`
+			Endpoints []struct {
+				Status                   string   `json:"status"`
+				SupportedProtocols       []string `json:"supported_protocols"`
+				SupportedParameters      []string `json:"supported_parameters"`
+				InputNUSDPerMillion      int64    `json:"input_nusd_per_million"`
+				OutputNUSDPerMillion     int64    `json:"output_nusd_per_million"`
+				CacheReadNUSDPerMillion  int64    `json:"cache_read_nusd_per_million"`
+				CacheWriteNUSDPerMillion int64    `json:"cache_write_nusd_per_million"`
+				RequestNUSD              int64    `json:"request_nusd"`
+				MaxOutputTokens          int      `json:"max_output_tokens"`
+				LatencyMS                int64    `json:"latency_ms"`
+			} `json:"endpoints"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, err
 	}
 	out := make([]ModelInfo, 0, len(parsed.Data))
+	byID := make(map[string]ModelInfo, len(parsed.Data))
 	for _, item := range parsed.Data {
 		name := item.Name
 		if name == "" {
 			name = item.ID
 		}
-		out = append(out, ModelInfo{
-			ID:            item.ID,
-			Name:          name,
-			ContextWindow: item.ContextLength,
-		})
+		info := ModelInfo{
+			ID:                  item.ID,
+			Name:                name,
+			Author:              item.Author,
+			Description:         item.Description,
+			ContextWindow:       item.ContextLength,
+			SupportedParameters: append([]string(nil), item.SupportedParameters...),
+		}
+		if item.Capabilities != nil {
+			info.MaxOutput = item.Capabilities.MaxOutputTokens
+			info.ReasoningLevels = append([]string(nil), item.Capabilities.ReasoningLevels...)
+		}
+		for _, mod := range item.InputModalities {
+			if mod == "image" {
+				info.SupportsImages = true
+			}
+		}
+		protoSeen := make(map[string]struct{})
+		paramSeen := make(map[string]struct{})
+		for _, sp := range info.SupportedParameters {
+			paramSeen[sp] = struct{}{}
+		}
+		for _, ep := range item.Endpoints {
+			if ep.Status != "" && ep.Status != "active" {
+				continue
+			}
+			for _, pr := range ep.SupportedProtocols {
+				if _, ok := protoSeen[pr]; !ok {
+					protoSeen[pr] = struct{}{}
+					info.SupportedProtocols = append(info.SupportedProtocols, pr)
+				}
+			}
+			for _, pa := range ep.SupportedParameters {
+				if _, ok := paramSeen[pa]; !ok {
+					paramSeen[pa] = struct{}{}
+					info.SupportedParameters = append(info.SupportedParameters, pa)
+				}
+			}
+			if info.MaxOutput == 0 && ep.MaxOutputTokens > 0 {
+				info.MaxOutput = ep.MaxOutputTokens
+			}
+			if info.InputNUSDPerMillion == 0 && ep.InputNUSDPerMillion > 0 {
+				info.InputNUSDPerMillion = ep.InputNUSDPerMillion
+				info.OutputNUSDPerMillion = ep.OutputNUSDPerMillion
+				info.CacheReadNUSDPerMillion = ep.CacheReadNUSDPerMillion
+				info.CacheWriteNUSDPerMillion = ep.CacheWriteNUSDPerMillion
+				info.RequestNUSD = ep.RequestNUSD
+				info.LatencyMS = ep.LatencyMS
+			}
+		}
+		for _, pa := range info.SupportedParameters {
+			switch pa {
+			case "tools":
+				info.SupportsTools = true
+			case "thinking", "reasoning_effort", "enable_thinking", "reasoning":
+				info.SupportsThinking = true
+			}
+		}
+		if len(info.ReasoningLevels) > 0 {
+			info.SupportsThinking = true
+		}
+		out = append(out, info)
+		byID[info.ID] = info
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+
+	if p.Protocol == config.ProtocolDaumini {
+		c.mu.Lock()
+		c.cache[base] = cachedCatalog{
+			models:    out,
+			byID:      byID,
+			fetchedAt: time.Now(),
+		}
+		c.mu.Unlock()
+	}
 	return out, nil
 }
 
-func (c *Client) resolveDauminiProtocol(ctx context.Context, p config.ProviderConfig, modelID string) config.Protocol {
+func (c *Client) resolveDauminiTarget(ctx context.Context, p config.ProviderConfig, modelID string) (config.Protocol, *ModelInfo) {
 	base := strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
-	author, slug, ok := strings.Cut(strings.TrimSpace(modelID), "/")
-	if !ok || author == "" || slug == "" {
-		return config.ProtocolOpenAIChat
+	if base == "" {
+		return config.ProtocolOpenAIChat, nil
 	}
-	u := fmt.Sprintf("%s/api/v1/model/%s/%s", base, url.PathEscape(author), url.PathEscape(slug))
+
+	c.mu.RLock()
+	cat, ok := c.cache[base]
+	c.mu.RUnlock()
+	if !ok || time.Since(cat.fetchedAt) > 5*time.Minute {
+		_, _ = c.ListModels(ctx, p)
+		c.mu.RLock()
+		cat, ok = c.cache[base]
+		c.mu.RUnlock()
+	}
+	if ok {
+		if info, found := cat.byID[modelID]; found {
+			return pickDauminiProtocol(info), &info
+		}
+	}
+
+	// Fallback: query the exact daumini endpoints route /api/v1/models/{author}/{slug}/endpoints.
+	author, slug, hasSlash := strings.Cut(strings.TrimSpace(modelID), "/")
+	if !hasSlash || author == "" || slug == "" {
+		return config.ProtocolOpenAIChat, nil
+	}
+	u := fmt.Sprintf("%s/api/v1/models/%s/%s/endpoints", base, url.PathEscape(author), url.PathEscape(slug))
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, nil)
 	if err != nil {
-		return config.ProtocolOpenAIChat
+		return config.ProtocolOpenAIChat, nil
 	}
 	if k := p.ResolveAPIKey(); k != "" {
 		req.Header.Set("Authorization", "Bearer "+k)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return config.ProtocolOpenAIChat
+		return config.ProtocolOpenAIChat, nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return config.ProtocolOpenAIChat
+		return config.ProtocolOpenAIChat, nil
 	}
 	var detail struct {
-		Endpoints []struct {
-			SupportedProtocols []string `json:"supported_protocols"`
-		} `json:"endpoints"`
+		Data struct {
+			Endpoints []struct {
+				Status              string   `json:"status"`
+				SupportedProtocols  []string `json:"supported_protocols"`
+				SupportedParameters []string `json:"supported_parameters"`
+				MaxOutputTokens     int      `json:"max_output_tokens"`
+			} `json:"endpoints"`
+		} `json:"data"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 512*1024)).Decode(&detail) != nil {
+		return config.ProtocolOpenAIChat, nil
+	}
+	info := ModelInfo{ID: modelID}
+	for _, ep := range detail.Data.Endpoints {
+		if ep.Status != "" && ep.Status != "active" {
+			continue
+		}
+		info.SupportedProtocols = append(info.SupportedProtocols, ep.SupportedProtocols...)
+		info.SupportedParameters = append(info.SupportedParameters, ep.SupportedParameters...)
+		if info.MaxOutput == 0 {
+			info.MaxOutput = ep.MaxOutputTokens
+		}
+	}
+	return pickDauminiProtocol(info), &info
+}
+
+func pickDauminiProtocol(info ModelInfo) config.Protocol {
+	// Native Anthropic Messages gets explicit cache_control breakpoints.
+	if info.HasProtocol("messages") {
+		return config.ProtocolAnthropic
+	}
+	// Prefer chat.completions for DeepSeek / general models so reasoning_content stays intact across tool loops.
+	if info.HasProtocol("chat.completions") {
 		return config.ProtocolOpenAIChat
 	}
-	for _, ep := range detail.Endpoints {
-		for _, sp := range ep.SupportedProtocols {
-			switch sp {
-			case "messages":
-				return config.ProtocolAnthropic
-			case "responses":
-				return config.ProtocolOpenAIResponses
-			}
-		}
+	if info.HasProtocol("responses") {
+		return config.ProtocolOpenAIResponses
 	}
 	return config.ProtocolOpenAIChat
 }
 
-func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiKey, modelID string, isDeepSeek bool) (GenerateResponse, error) {
+func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiKey, modelID string, isDeepSeek bool, meta *ModelInfo) (GenerateResponse, error) {
 	base := strings.TrimRight(strings.TrimSpace(req.Provider.BaseURL), "/")
 	endpoint := base + "/chat/completions"
 	if req.Provider.Protocol == config.ProtocolDaumini {
@@ -312,6 +492,23 @@ func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiK
 	if !isDeepSeek && req.Provider.Protocol != config.ProtocolDaumini && req.PromptCacheKey != "" {
 		payload["prompt_cache_key"] = req.PromptCacheKey
 	}
+	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
+		if effort == "off" || effort == "none" {
+			if meta == nil || meta.HasParam("thinking") {
+				payload["thinking"] = map[string]any{"type": "disabled"}
+			} else if meta.HasParam("enable_thinking") {
+				payload["enable_thinking"] = false
+			}
+		} else {
+			if meta == nil || meta.HasParam("reasoning_effort") {
+				payload["reasoning_effort"] = effort
+			} else if meta.HasParam("thinking") {
+				payload["thinking"] = map[string]any{"type": "enabled"}
+			} else if meta.HasParam("enable_thinking") {
+				payload["enable_thinking"] = true
+			}
+		}
+	}
 	if len(req.Tools) > 0 {
 		tList := make([]map[string]any, 0, len(req.Tools))
 		for _, t := range req.Tools {
@@ -365,14 +562,20 @@ func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiK
 	var tcOrder []int
 	var stopReason string
 	var usage types.Usage
-	var genID string
+	headerGenID := strings.TrimSpace(resp.Header.Get("X-Generation-Id"))
+	usage.RequestID = strings.TrimSpace(resp.Header.Get("X-Request-Id"))
+	genID := headerGenID
 
 	err = readSSE(resp.Body, func(data string) error {
 		if data == "[DONE]" {
 			return io.EOF
 		}
 		var chunk struct {
-			ID      string `json:"id"`
+			ID    string `json:"id"`
+			Error *struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
 			Choices []struct {
 				FinishReason string `json:"finish_reason"`
 				Delta        struct {
@@ -405,7 +608,13 @@ func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiK
 		if json.Unmarshal([]byte(data), &chunk) != nil {
 			return nil
 		}
-		if chunk.ID != "" {
+		if chunk.Error != nil && chunk.Error.Message != "" {
+			if chunk.Error.Code != "" {
+				return fmt.Errorf("%s (%s)", chunk.Error.Message, chunk.Error.Code)
+			}
+			return fmt.Errorf("%s", chunk.Error.Message)
+		}
+		if headerGenID == "" && chunk.ID != "" {
 			genID = chunk.ID
 		}
 		if chunk.Usage != nil {
@@ -509,7 +718,7 @@ func (c *Client) streamOpenAIChat(ctx context.Context, req GenerateRequest, apiK
 	}, nil
 }
 
-func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest, apiKey, modelID string) (GenerateResponse, error) {
+func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest, apiKey, modelID string, meta *ModelInfo) (GenerateResponse, error) {
 	base := strings.TrimRight(strings.TrimSpace(req.Provider.BaseURL), "/")
 	endpoint := base + "/responses"
 	if req.Provider.Protocol == config.ProtocolDaumini {
@@ -582,8 +791,13 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 		"stream":            true,
 		"max_output_tokens": req.MaxTokens,
 	}
-	if req.PromptCacheKey != "" {
+	if req.PromptCacheKey != "" && (req.Provider.Protocol != config.ProtocolDaumini || (meta != nil && meta.HasParam("prompt_cache_key"))) {
 		payload["prompt_cache_key"] = req.PromptCacheKey
+	}
+	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" && effort != "off" && effort != "none" {
+		if meta == nil || meta.HasParam("reasoning") {
+			payload["reasoning"] = map[string]any{"effort": effort}
+		}
 	}
 	if len(req.Tools) > 0 {
 		tList := make([]map[string]any, 0, len(req.Tools))
@@ -633,7 +847,9 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 	var fcOrder []string
 	var stopReason string
 	var usage types.Usage
-	var genID string
+	headerGenID := strings.TrimSpace(resp.Header.Get("X-Generation-Id"))
+	usage.RequestID = strings.TrimSpace(resp.Header.Get("X-Request-Id"))
+	genID := headerGenID
 
 	err = readSSE(resp.Body, func(data string) error {
 		if data == "[DONE]" {
@@ -643,6 +859,10 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 			Type   string `json:"type"`
 			Delta  string `json:"delta"`
 			ItemID string `json:"item_id"`
+			Error  *struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
 			Item   *struct {
 				ID        string `json:"id"`
 				Type      string `json:"type"`
@@ -669,12 +889,17 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 			return nil
 		}
 		switch ev.Type {
+		case "error", "response.failed":
+			if ev.Error != nil && ev.Error.Message != "" {
+				return fmt.Errorf("%s", ev.Error.Message)
+			}
+			return fmt.Errorf("upstream response failed")
 		case "response.output_text.delta":
 			textAcc.WriteString(ev.Delta)
 			if req.Callbacks.OnTextDelta != nil {
 				req.Callbacks.OnTextDelta(ev.Delta)
 			}
-		case "response.reasoning_summary_text.delta":
+		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 			thinkAcc.WriteString(ev.Delta)
 			if req.Callbacks.OnThinkingDelta != nil {
 				req.Callbacks.OnThinkingDelta(ev.Delta)
@@ -698,7 +923,9 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 			}
 		case "response.completed", "response.incomplete":
 			if ev.Response != nil {
-				genID = ev.Response.ID
+				if headerGenID == "" && ev.Response.ID != "" {
+					genID = ev.Response.ID
+				}
 				stopReason = ev.Response.Status
 				if ev.Response.Usage != nil {
 					cached := int64(0)
@@ -760,7 +987,7 @@ func (c *Client) streamOpenAIResponses(ctx context.Context, req GenerateRequest,
 	}, nil
 }
 
-func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKey, modelID string) (GenerateResponse, error) {
+func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKey, modelID string, meta *ModelInfo) (GenerateResponse, error) {
 	base := strings.TrimRight(strings.TrimSpace(req.Provider.BaseURL), "/")
 	endpoint := strings.TrimSuffix(base, "/v1") + "/v1/messages"
 	if req.Provider.Protocol == config.ProtocolDaumini {
@@ -823,6 +1050,27 @@ func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKe
 		"max_tokens": req.MaxTokens,
 		"messages":   msgs,
 		"stream":     true,
+	}
+	if effort := strings.TrimSpace(req.ReasoningEffort); effort != "" {
+		if effort == "off" || effort == "none" {
+			payload["thinking"] = map[string]any{"type": "disabled"}
+		} else if meta == nil || meta.HasParam("thinking") {
+			budget := 4096
+			switch effort {
+			case "low":
+				budget = 2048
+			case "medium":
+				budget = 6144
+			case "high":
+				budget = 12288
+			case "max":
+				budget = 24576
+			}
+			if req.MaxTokens <= budget {
+				payload["max_tokens"] = budget + 4096
+			}
+			payload["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
+		}
 	}
 	if strings.TrimSpace(req.SystemPrompt) != "" {
 		payload["system"] = []map[string]any{{
@@ -889,12 +1137,18 @@ func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKe
 	var blkOrder []int
 	var stopReason string
 	var usage types.Usage
-	var genID string
+	headerGenID := strings.TrimSpace(resp.Header.Get("X-Generation-Id"))
+	usage.RequestID = strings.TrimSpace(resp.Header.Get("X-Request-Id"))
+	genID := headerGenID
 
 	err = readSSE(resp.Body, func(data string) error {
 		var ev struct {
-			Type    string `json:"type"`
-			Index   int    `json:"index"`
+			Type  string `json:"type"`
+			Index int    `json:"index"`
+			Error *struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"error"`
 			Message *struct {
 				ID    string `json:"id"`
 				Usage *struct {
@@ -928,9 +1182,16 @@ func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKe
 			return nil
 		}
 		switch ev.Type {
+		case "error":
+			if ev.Error != nil && ev.Error.Message != "" {
+				return fmt.Errorf("%s", ev.Error.Message)
+			}
+			return fmt.Errorf("upstream stream error")
 		case "message_start":
 			if ev.Message != nil {
-				genID = ev.Message.ID
+				if headerGenID == "" && ev.Message.ID != "" {
+					genID = ev.Message.ID
+				}
 				if ev.Message.Usage != nil {
 					usage.InputTokens = ev.Message.Usage.InputTokens
 					usage.CacheWriteTokens = ev.Message.Usage.CacheCreationInputTokens
@@ -1026,7 +1287,7 @@ func (c *Client) streamAnthropic(ctx context.Context, req GenerateRequest, apiKe
 func (c *Client) reconcileDauminiGeneration(ctx context.Context, p config.ProviderConfig, apiKey, genID string, usage *types.Usage) {
 	base := strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
 	u := fmt.Sprintf("%s/api/v1/generation?id=%s", base, url.QueryEscape(genID))
-	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, nil)
 	if err != nil {
@@ -1043,11 +1304,44 @@ func (c *Client) reconcileDauminiGeneration(ctx context.Context, p config.Provid
 	defer resp.Body.Close()
 	var parsed struct {
 		Data struct {
-			TotalCostNUSD int64 `json:"total_cost_nusd"`
+			ChargedNUSD      int64  `json:"charged_nusd"`
+			TotalCostNUSD    int64  `json:"total_cost_nusd"`
+			LatencyMS        int64  `json:"latency_ms"`
+			PromptTokens     *int64 `json:"prompt_tokens"`
+			CompletionTokens *int64 `json:"completion_tokens"`
+			ReasoningTokens  *int64 `json:"reasoning_tokens"`
+			CacheUsage       *struct {
+				CacheReadTokens  int64 `json:"cache_read_tokens"`
+				CacheWriteTokens int64 `json:"cache_write_tokens"`
+			} `json:"cache_usage"`
 		} `json:"data"`
 	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 128*1024)).Decode(&parsed) == nil {
-		usage.TotalCostNUSD = parsed.Data.TotalCostNUSD
+		cost := parsed.Data.ChargedNUSD
+		if cost == 0 {
+			cost = parsed.Data.TotalCostNUSD
+		}
+		usage.TotalCostNUSD = cost
+		if parsed.Data.LatencyMS > 0 {
+			usage.LatencyMS = parsed.Data.LatencyMS
+		}
+		if parsed.Data.CacheUsage != nil {
+			usage.CacheReadTokens = parsed.Data.CacheUsage.CacheReadTokens
+			usage.CacheWriteTokens = parsed.Data.CacheUsage.CacheWriteTokens
+		}
+		if parsed.Data.PromptTokens != nil {
+			uncached := *parsed.Data.PromptTokens - usage.CacheReadTokens - usage.CacheWriteTokens
+			if uncached < 0 {
+				uncached = 0
+			}
+			usage.InputTokens = uncached
+		}
+		if parsed.Data.CompletionTokens != nil {
+			usage.OutputTokens = *parsed.Data.CompletionTokens
+		}
+		if parsed.Data.ReasoningTokens != nil {
+			usage.ReasoningTokens = *parsed.Data.ReasoningTokens
+		}
 		usage.Reconciled = true
 	}
 }

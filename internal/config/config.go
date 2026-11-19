@@ -123,7 +123,8 @@ func DefaultConfig() Config {
 				Protocol:     ProtocolDaumini,
 				BaseURL:      "https://mini.daum.pw",
 				APIKeyEnv:    "DAUMINI_API_KEY",
-				DefaultModel: "deepseek/deepseek-chat",
+				DefaultModel: "deepseek/deepseek-v4.1flash",
+				Models:       []string{"deepseek/deepseek-v4.1flash"},
 				Enabled:      true,
 			},
 			{

@@ -226,7 +226,7 @@ func (m *Manager) DeleteSession(sessionID string) error {
 	return m.store.DeleteSession(sessionID)
 }
 
-func (m *Manager) UpdateSessionSettings(sessionID string, providerID, modelID string, mode types.ApprovalMode, workspaceDir string, archived *bool, title string) (types.SessionMeta, error) {
+func (m *Manager) UpdateSessionSettings(sessionID string, providerID, modelID string, reasoningEffort *string, mode types.ApprovalMode, workspaceDir string, archived *bool, title string) (types.SessionMeta, error) {
 	if strings.TrimSpace(workspaceDir) != "" {
 		absDir, err := filepath.Abs(workspaceDir)
 		if err != nil {
@@ -243,6 +243,9 @@ func (m *Manager) UpdateSessionSettings(sessionID string, providerID, modelID st
 		}
 		if modelID != "" {
 			s.Meta.ModelID = modelID
+		}
+		if reasoningEffort != nil {
+			s.Meta.ReasoningEffort = strings.TrimSpace(*reasoningEffort)
 		}
 		if mode != "" {
 			s.Meta.ApprovalMode = mode
@@ -559,12 +562,13 @@ func (m *Manager) executeLoop(ctx context.Context, ar *activeRun, sessionID stri
 		var textStream strings.Builder
 		var thinkStream strings.Builder
 		resp, err := m.llm.Generate(ctx, llm.GenerateRequest{
-			Provider:       prov,
-			ModelID:        run.ModelID,
-			SystemPrompt:   staticSystemPrompt + extraSystem(m.cfgMgr.Get().SystemExtra),
-			Messages:       llmMsgs,
-			Tools:          m.reg.Specs(),
-			PromptCacheKey: sessionID,
+			Provider:        prov,
+			ModelID:         run.ModelID,
+			ReasoningEffort: snap.Meta.ReasoningEffort,
+			SystemPrompt:    staticSystemPrompt + extraSystem(m.cfgMgr.Get().SystemExtra),
+			Messages:        llmMsgs,
+			Tools:           m.reg.Specs(),
+			PromptCacheKey:  sessionID,
 			Callbacks: llm.StreamCallbacks{
 				OnTextDelta: func(d string) {
 					textStream.WriteString(d)
