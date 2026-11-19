@@ -108,12 +108,16 @@ body,
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: var(--text-base);
   line-height: 1.6;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+body,
+#app {
+  font-size: var(--text-base);
 }
 
 ::selection {
@@ -451,7 +455,7 @@ a:hover {
   background: var(--sunken);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--fg-3);
   line-height: 1;
 }
