@@ -1,11 +1,29 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>daumini-agent</title>
+    <link rel="preload" href="/fonts/xiaolai-ui-5a83907264.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/xiaolai-mono-ui-ad73a6d1b0.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      @font-face { font-family: "Xiaolai UI"; src: url("/fonts/xiaolai-ui-5a83907264.woff2") format("woff2"); font-display: block; }
+      @font-face { font-family: "Xiaolai Mono UI"; src: url("/fonts/xiaolai-mono-ui-ad73a6d1b0.woff2") format("woff2"); font-display: block; }
+    </style>
+    <script>
+      (function () {
+        var theme = "light";
+        try {
+          var stored = localStorage.getItem("daumini.theme");
+          if (stored === "light" || stored === "dark") theme = stored;
+          else if (window.matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+        } catch (e) {}
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
-  <body>
+  <body class="paper">
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

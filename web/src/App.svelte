@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { AgentController } from './lib/store.svelte';
+  import Segmented from './lib/components/Segmented.svelte';
+  import Wordmark from './lib/components/Wordmark.svelte';
   import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ProviderConfig, Usage } from './lib/types';
 
   const ctrl = new AgentController();
@@ -11,19 +13,16 @@
   let newWorkspace = $state('.');
   let showNewBox = $state(false);
 
-  // daumini quick login form
   let dmBase = $state('https://mini.daum.pw');
   let dmEmail = $state('');
   let dmPass = $state('');
   let dmStatus = $state('');
 
-  // new custom provider form
   let newProvName = $state('');
   let newProvUrl = $state('');
   let newProvKey = $state('');
   let newProvModel = $state('');
 
-  // new MCP server form
   let mcpName = $state('');
   let mcpTransport = $state<'stdio' | 'http'>('stdio');
   let mcpCommand = $state('');
@@ -41,7 +40,6 @@
     (ctrl.current?.pending_approvals ?? []).filter((a) => a.decision === 'pending')
   );
 
-  // Pair tool_use blocks with matching tool_result blocks across subsequent user messages.
   const toolResultsMap = $derived.by(() => {
     const map: Record<string, Block> = {};
     for (const m of ctrl.current?.messages ?? []) {
@@ -53,6 +51,22 @@
     }
     return map;
   });
+
+  function withTransition(fn: () => void) {
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => void };
+    if (doc.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      doc.startViewTransition(fn);
+    } else {
+      fn();
+    }
+  }
+
+  function switchTab(next: 'work' | 'providers' | 'extensions') {
+    withTransition(() => {
+      tab = next;
+      if (next === 'extensions') void ctrl.loadLogs();
+    });
+  }
 
   function cachePct(u?: Usage | null): string {
     if (!u) return '0%';
@@ -174,37 +188,51 @@
 <div class="shell {tab === 'work' && showInspector ? 'with-inspector' : ''}">
   <aside class="sidebar">
     <div class="brand-row">
-      <span class="brand-title">daumini-agent</span>
-      <button class="icon-btn" onclick={() => ctrl.toggleTheme()}>
+      <span style="font-size: 19px;">
+        <Wordmark live={isRunning} />
+      </span>
+      <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => ctrl.toggleTheme()}>
         {ctrl.theme === 'light' ? '深色' : '浅色'}
       </button>
     </div>
 
-    <div class="nav-tabs">
-      <button class="nav-tab {tab === 'work' ? 'active' : ''}" onclick={() => (tab = 'work')}>工作台</button>
-      <button class="nav-tab {tab === 'providers' ? 'active' : ''}" onclick={() => (tab = 'providers')}>模型</button>
-      <button class="nav-tab {tab === 'extensions' ? 'active' : ''}" onclick={() => { tab = 'extensions'; void ctrl.loadLogs(); }}>扩展</button>
-    </div>
+    <Segmented
+      label="主导航"
+      value={tab}
+      options={[
+        { value: 'work', label: '工作台' },
+        { value: 'providers', label: '模型' },
+        { value: 'extensions', label: '扩展' }
+      ]}
+      onchange={(v) => switchTab(v)}
+    />
 
-    <button class="btn-primary" onclick={() => { tab = 'work'; showNewBox = !showNewBox; }}>
+    <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => { tab = 'work'; showNewBox = !showNewBox; }}>
       新建会话
     </button>
 
     {#if showNewBox}
-      <div class="layer-card" style="padding: 10px;">
+      <div class="sketch card-sketch" style="padding: 10px; animation: pop-in 0.2s var(--ease-out);">
         <div class="field-col">
           <span class="field-label">工作区路径</span>
-          <input class="input-flat" bind:value={newWorkspace} placeholder="." />
+          <input class="field border-line-strong" bind:value={newWorkspace} placeholder="." />
         </div>
-        <button class="btn-primary" onclick={() => void handleCreateSession()}>创建并进入</button>
+        <button class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleCreateSession()}>
+          创建并进入
+        </button>
       </div>
     {/if}
 
     <div class="session-list">
       {#each ctrl.sessions as s (s.id)}
         <button
-          class="session-item {ctrl.current?.meta.id === s.id ? 'active' : ''}"
-          onclick={() => { tab = 'work'; void ctrl.selectSession(s.id); }}
+          class="wobble session-item {ctrl.current?.meta.id === s.id ? 'active border-line-strong' : 'border-line'}"
+          onclick={() => {
+            withTransition(() => {
+              tab = 'work';
+              void ctrl.selectSession(s.id);
+            });
+          }}
         >
           <div class="session-title">{s.title || s.id}</div>
           <div class="session-meta">
@@ -214,18 +242,14 @@
         </button>
       {/each}
     </div>
-
-    <div style="font-size: 11px; color: var(--fg-muted); padding: 4px 6px;">
-      纯本地独立引擎 零云端依赖
-    </div>
   </aside>
 
   <main class="main-pane">
     {#if ctrl.error}
-      <div class="approval-bar" style="margin-top: 10px; background: var(--bg-err-soft); color: var(--fg-err);">
+      <div class="approval-bar border-line-strong" style="margin-top: 10px; background: var(--bad-soft); color: var(--bad);">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span>{ctrl.error}</span>
-          <button class="icon-btn" onclick={() => (ctrl.error = '')}>关闭</button>
+          <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => (ctrl.error = '')}>关闭</button>
         </div>
       </div>
     {/if}
@@ -233,11 +257,11 @@
     {#if tab === 'work'}
       <header class="topbar">
         <div class="topbar-left">
-          <strong>{ctrl.current?.meta.title || '未选择会话'}</strong>
+          <span class="topbar-title">{ctrl.current?.meta.title || '未选择会话'}</span>
           {#if ctrl.current}
-            <span class="pill">{ctrl.current.meta.workspace_dir}</span>
+            <span class="topbar-path border-line" title={ctrl.current.meta.workspace_dir}>{ctrl.current.meta.workspace_dir}</span>
             {#if ctrl.current.meta.parent_session_id}
-              <span class="pill accent">分叉会话</span>
+              <span class="tag mark border-line">分叉</span>
             {/if}
           {/if}
         </div>
@@ -245,7 +269,8 @@
         {#if ctrl.current}
           <div class="topbar-actions">
             <select
-              class="select-flat"
+              class="field border-line-strong"
+              style="height: 32px; padding: 0 8px;"
               value={ctrl.current.meta.provider_id}
               onchange={(e) => {
                 const pid = (e.target as HTMLSelectElement).value;
@@ -253,66 +278,80 @@
                 void ctrl.updateSession({ provider_id: pid, model_id: prov?.default_model || ctrl.current?.meta.model_id });
               }}
             >
-              {#each ctrl.config?.providers ?? [] as p}
-                <option value={p.id}>{p.name}</option>
+              {#each ctrl.config?.providers ?? [] as p (p.id)}
+                <option value={p.id} selected={p.id === ctrl.current.meta.provider_id}>{p.name}</option>
               {/each}
             </select>
 
             <input
-              class="input-flat"
-              style="width: 170px;"
+              class="field border-line-strong"
+              style="width: 150px; height: 32px;"
               value={ctrl.current.meta.model_id}
               onchange={(e) => void ctrl.updateSession({ model_id: (e.target as HTMLInputElement).value })}
               placeholder="模型 ID"
             />
 
-            <div class="segmented">
-              {#each [['ask', '询问'], ['auto_read', '只读放行'], ['yolo', '全部放行']] as [modeVal, label]}
-                <button
-                  class={ctrl.current.meta.approval_mode === modeVal ? 'active' : ''}
-                  onclick={() => void ctrl.updateSession({ approval_mode: modeVal as ApprovalMode })}
-                >
-                  {label}
-                </button>
-              {/each}
-            </div>
+            <Segmented
+              size="sm"
+              label="工具权限"
+              value={ctrl.current.meta.approval_mode}
+              options={[
+                { value: 'ask', label: '询问' },
+                { value: 'auto_read', label: '只读' },
+                { value: 'yolo', label: '放行' }
+              ]}
+              onchange={(v) => void ctrl.updateSession({ approval_mode: v as ApprovalMode })}
+            />
 
-            <button class="btn-flat" onclick={() => void ctrl.forkSession(0)}>分叉</button>
-            <button class="btn-flat" onclick={() => (showInspector = !showInspector)}>
-              {showInspector ? '收起侧栏' : '工作区'}
+            <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.forkSession(0)}>分叉</button>
+            <button
+              class="wobble btn btn-sm btn-secondary border-line-strong"
+              onclick={() => withTransition(() => { showInspector = !showInspector; })}
+            >
+              {showInspector ? '隐藏侧栏' : '工作区'}
             </button>
           </div>
         {/if}
       </header>
 
       {#if (ctrl.current?.meta.todos?.length ?? 0) > 0}
-        <div class="todo-strip">
+        <div class="todo-strip border-line">
           {#each ctrl.current?.meta.todos ?? [] as td}
-            <span class="pill {td.status === 'completed' ? 'ok' : td.status === 'in_progress' ? 'accent' : ''}">
-              {td.status === 'completed' ? '已完成' : td.status === 'in_progress' ? '进行中' : '待办'} {td.content}
+            <span class="tag {td.status === 'completed' ? 'ok' : td.status === 'in_progress' ? 'mark' : ''}">
+              {td.status === 'completed' ? '完成' : td.status === 'in_progress' ? '进行中' : '待办'} {td.content}
             </span>
           {/each}
         </div>
       {/if}
 
       <div class="feed" bind:this={feedEl}>
+        {#if ctrl.current && ctrl.current.messages.length === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking}
+          <div class="empty-feed">
+            <span style="font-size: 28px;"><Wordmark live={false} suffix="" /></span>
+            <div style="font-size: 16px;" class="scribble">{ctrl.current.meta.title}</div>
+            <div style="font-family: var(--font-mono); font-size: 13px; color: var(--fg-3); margin-top: 8px;">
+              {ctrl.current.meta.provider_id} / {ctrl.current.meta.model_id}
+            </div>
+          </div>
+        {/if}
+
         {#if ctrl.current}
           {#each ctrl.current.messages as msg (msg.id)}
             {#if msg.role === 'user'}
               {@const textBlocks = (msg.blocks ?? []).filter((b) => b.type === 'text' || b.type === 'system_notice')}
               {#if textBlocks.length > 0}
                 <div class="msg-wrap">
-                  <div class="msg-user">
+                  <div class="msg-user border-line-strong">
                     {#each textBlocks as tb}{tb.text}{/each}
                   </div>
                 </div>
               {/if}
             {:else if msg.role === 'assistant'}
               <div class="msg-wrap">
-                <div class="msg-assistant">
+                <div class="msg-assistant sketch">
                   {#each msg.blocks ?? [] as b}
                     {#if b.type === 'thinking' && b.thinking}
-                      <details class="think-box">
+                      <details class="think-box border-line">
                         <summary>思考过程 {b.thinking.length} 字</summary>
                         <div class="msg-text" style="margin-top: 6px;">{b.thinking}</div>
                       </details>
@@ -320,23 +359,23 @@
                       <div class="msg-text">{b.text}</div>
                     {:else if b.type === 'tool_use'}
                       {@const res = b.id ? toolResultsMap[b.id] : undefined}
-                      <details class="tool-card">
+                      <details class="tool-card border-line">
                         <summary class="tool-head">
                           <span class="tool-name">{b.name}</span>
-                          <span class="pill {res?.is_error ? 'warn' : res ? 'ok' : ''}">
+                          <span class="tag {res?.is_error ? 'bad' : res ? 'ok' : 'mark'}">
                             {res ? (res.is_error ? '报错' : '完成') : '执行中'}
                           </span>
                         </summary>
-                        <pre class="tool-pre">{fmtJSON(b.input)}</pre>
+                        <pre class="code-surface">{fmtJSON(b.input)}</pre>
                         {#if res}
-                          <pre class="tool-pre">{res.text}</pre>
+                          <pre class="code-surface">{res.text}</pre>
                         {/if}
                       </details>
                     {/if}
                   {/each}
                   {#if msg.usage}
-                    <div style="font-size: 11px; color: var(--fg-muted); display: flex; gap: 12px;">
-                      <span>缓存命中 {cachePct(msg.usage)}</span>
+                    <div style="font-size: 12px; color: var(--fg-3); display: flex; gap: 12px; font-variant-numeric: tabular-nums;">
+                      <span class="marked">缓存 {cachePct(msg.usage)}</span>
                       <span>输入 {totalIn(msg.usage)}</span>
                       <span>输出 {msg.usage.output_tokens}</span>
                       {#if msg.usage.total_cost_nusd}
@@ -351,9 +390,9 @@
 
           {#if ctrl.activeStreamThinking || ctrl.activeStreamText || Object.keys(ctrl.activeTools).length > 0}
             <div class="msg-wrap">
-              <div class="msg-assistant">
+              <div class="msg-assistant sketch">
                 {#if ctrl.activeStreamThinking}
-                  <details class="think-box" open>
+                  <details class="think-box border-line" open>
                     <summary>正在思考</summary>
                     <div class="msg-text" style="margin-top: 6px;">{ctrl.activeStreamThinking}</div>
                   </details>
@@ -362,16 +401,16 @@
                   <div class="msg-text">{ctrl.activeStreamText}</div>
                 {/if}
                 {#each Object.entries(ctrl.activeTools) as [tid, t]}
-                  <div class="tool-card">
+                  <div class="tool-card border-line">
                     <div class="tool-head">
                       <span class="tool-name">{t.name}</span>
-                      <span class="pill {t.output ? (t.is_error ? 'warn' : 'ok') : 'accent'}">
+                      <span class="tag {t.output ? (t.is_error ? 'bad' : 'ok') : 'mark'}">
                         {t.output ? `${t.duration_ms ?? 0}ms` : '运行中'}
                       </span>
                     </div>
-                    <pre class="tool-pre">{fmtJSON(t.input)}</pre>
+                    <pre class="code-surface">{fmtJSON(t.input)}</pre>
                     {#if t.output}
-                      <pre class="tool-pre">{t.output}</pre>
+                      <pre class="code-surface">{t.output}</pre>
                     {/if}
                   </div>
                 {/each}
@@ -383,23 +422,23 @@
 
       {#if pendingApprovals.length > 0}
         {#each pendingApprovals as ap (ap.id)}
-          <div class="approval-bar">
+          <div class="approval-bar border-line-strong">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <strong>需要确认执行工具 {ap.tool_name}</strong>
-              <span class="pill">Hash {ap.args_hash.slice(0, 8)}</span>
+              <span>需要确认工具 {ap.tool_name}</span>
+              <span class="tag">Hash {ap.args_hash.slice(0, 8)}</span>
             </div>
-            <pre class="tool-pre" style="margin: 0;">{fmtJSON(ap.args_json)}</pre>
+            <pre class="code-surface" style="margin: 0;">{fmtJSON(ap.args_json)}</pre>
             <div style="display: flex; gap: 8px;">
-              <button class="btn-flat btn-ok" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_once')}>允许一次</button>
-              <button class="btn-flat btn-ok" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_always')}>本会话同类放行</button>
-              <button class="btn-flat btn-err" onclick={() => void ctrl.resolveApproval(ap.id, 'deny')}>拒绝</button>
+              <button class="wobble btn btn-sm btn-primary hatch-green hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_once')}>允许一次</button>
+              <button class="wobble btn btn-sm btn-accent hatch-yellow hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'approve_always')}>本会话同类放行</button>
+              <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.resolveApproval(ap.id, 'deny')}>拒绝</button>
             </div>
           </div>
         {/each}
       {/if}
 
       <div class="composer-area">
-        <div class="composer-box">
+        <div class="composer-box sketch">
           <textarea
             class="composer-input"
             bind:value={promptText}
@@ -407,25 +446,25 @@
             onkeydown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                void handleSend(isRunning ? 'queue' : 'queue');
+                void handleSend('queue');
               }
             }}
           ></textarea>
           <div class="composer-foot">
-            <div style="font-size: 12px; color: var(--fg-muted); display: flex; gap: 12px;">
+            <div style="font-size: 12px; color: var(--fg-3); display: flex; gap: 12px; font-variant-numeric: tabular-nums;">
               {#if ctrl.current}
-                <span>会话累计缓存命中 {cachePct(ctrl.current.meta.total_usage)}</span>
-                <span>总输入 {totalIn(ctrl.current.meta.total_usage)}</span>
-                <span>总输出 {ctrl.current.meta.total_usage.output_tokens}</span>
+                <span>缓存 {cachePct(ctrl.current.meta.total_usage)}</span>
+                <span>输入 {totalIn(ctrl.current.meta.total_usage)}</span>
+                <span>输出 {ctrl.current.meta.total_usage.output_tokens}</span>
               {/if}
             </div>
             <div style="display: flex; gap: 8px;">
               {#if isRunning}
-                <button class="btn-flat btn-warn" onclick={() => void ctrl.cancelRun()}>停止</button>
-                <button class="btn-flat" onclick={() => void handleSend('steer')}>插队引导</button>
-                <button class="btn-primary" onclick={() => void handleSend('queue')}>排队发送</button>
+                <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>停止</button>
+                <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void handleSend('steer')}>插队引导</button>
+                <button class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleSend('queue')}>排队</button>
               {:else}
-                <button class="btn-primary" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>发送</button>
+                <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" disabled={!promptText.trim()} onclick={() => void handleSend('queue')}>发送</button>
               {/if}
             </div>
           </div>
@@ -436,16 +475,16 @@
       <div class="panel-page">
         <div class="panel-inner">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">模型与凭据</h2>
-            <button class="btn-primary" onclick={() => void saveProviders()}>保存全部配置</button>
+            <span style="font-size: 20px;" class="scribble">模型与凭据</span>
+            <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void saveProviders()}>保存配置</button>
           </div>
 
-          <div class="layer-card">
-            <strong>默认行为</strong>
+          <div class="card-sketch sketch">
+            <span>默认行为</span>
             <div class="grid-2">
               <div class="field-col">
                 <span class="field-label">默认 Provider</span>
-                <select class="select-flat" bind:value={ctrl.config.default_provider}>
+                <select class="field border-line-strong" bind:value={ctrl.config.default_provider}>
                   {#each ctrl.config.providers as p}
                     <option value={p.id}>{p.name}</option>
                   {/each}
@@ -453,11 +492,11 @@
               </div>
               <div class="field-col">
                 <span class="field-label">默认模型</span>
-                <input class="input-flat" bind:value={ctrl.config.default_model} />
+                <input class="field border-line-strong" bind:value={ctrl.config.default_model} />
               </div>
               <div class="field-col">
                 <span class="field-label">默认审批模式</span>
-                <select class="select-flat" bind:value={ctrl.config.approval_mode}>
+                <select class="field border-line-strong" bind:value={ctrl.config.approval_mode}>
                   <option value="ask">每次询问</option>
                   <option value="auto_read">只读放行</option>
                   <option value="yolo">全部放行</option>
@@ -465,46 +504,46 @@
               </div>
               <div class="field-col">
                 <span class="field-label">单轮最大步数</span>
-                <input class="input-flat" type="number" bind:value={ctrl.config.max_turns} />
+                <input class="field border-line-strong" type="number" bind:value={ctrl.config.max_turns} />
               </div>
             </div>
             <div class="field-col">
               <span class="field-label">附加系统指令</span>
-              <textarea class="input-flat" rows="2" bind:value={ctrl.config.system_extra} placeholder="可选 追加到静态系统提示尾部"></textarea>
+              <textarea class="field border-line-strong" rows="2" bind:value={ctrl.config.system_extra} placeholder="系统提示附加内容"></textarea>
             </div>
           </div>
 
-          <div class="layer-card">
-            <strong>daumini 中转一键登录</strong>
+          <div class="card-sketch sketch">
+            <span>daumini 中转账号绑定</span>
             <div class="grid-2">
               <div class="field-col">
                 <span class="field-label">中转地址</span>
-                <input class="input-flat" bind:value={dmBase} />
+                <input class="field border-line-strong" bind:value={dmBase} />
               </div>
               <div class="field-col">
                 <span class="field-label">账号邮箱</span>
-                <input class="input-flat" bind:value={dmEmail} placeholder="user@example.com" />
+                <input class="field border-line-strong" bind:value={dmEmail} placeholder="user@example.com" />
               </div>
               <div class="field-col">
                 <span class="field-label">密码</span>
-                <input class="input-flat" type="password" bind:value={dmPass} />
+                <input class="field border-line-strong" type="password" bind:value={dmPass} />
               </div>
               <div class="field-col" style="justify-content: flex-end;">
-                <button class="btn-primary" onclick={() => void doDauminiLogin()}>登录并写入本地密钥</button>
+                <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void doDauminiLogin()}>登录并写入本地密钥</button>
               </div>
             </div>
             {#if dmStatus}
-              <div class="pill accent">{dmStatus}</div>
+              <div class="tag mark border-line">{dmStatus}</div>
             {/if}
           </div>
 
           {#each ctrl.config.providers as p, idx (p.id)}
-            <div class="layer-card">
+            <div class="card-sketch sketch">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong>{p.name} ({p.id})</strong>
+                <span>{p.name} ({p.id})</span>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                  <button class="btn-flat" onclick={() => void ctrl.fetchProviderModels(p.id)}>拉取模型</button>
-                  <label style="font-size: 12px; display: flex; gap: 4px; align-items: center;">
+                  <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.fetchProviderModels(p.id)}>拉取模型</button>
+                  <label style="font-size: 13px; display: flex; gap: 4px; align-items: center;">
                     <input type="checkbox" checked={p.enabled} onchange={(e) => updateProviderField(idx, { enabled: (e.target as HTMLInputElement).checked })} />
                     启用
                   </label>
@@ -513,7 +552,7 @@
               <div class="grid-2">
                 <div class="field-col">
                   <span class="field-label">协议</span>
-                  <select class="select-flat" value={p.protocol} onchange={(e) => updateProviderField(idx, { protocol: (e.target as HTMLSelectElement).value as ProviderConfig['protocol'] })}>
+                  <select class="field border-line-strong" value={p.protocol} onchange={(e) => updateProviderField(idx, { protocol: (e.target as HTMLSelectElement).value as ProviderConfig['protocol'] })}>
                     <option value="deepseek">DeepSeek</option>
                     <option value="openai_chat">OpenAI Chat</option>
                     <option value="openai_responses">OpenAI Responses</option>
@@ -523,37 +562,37 @@
                 </div>
                 <div class="field-col">
                   <span class="field-label">Base URL</span>
-                  <input class="input-flat" value={p.base_url} oninput={(e) => updateProviderField(idx, { base_url: (e.target as HTMLInputElement).value })} />
+                  <input class="field border-line-strong" value={p.base_url} oninput={(e) => updateProviderField(idx, { base_url: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div class="field-col">
                   <span class="field-label">API Key 留空保留旧值</span>
-                  <input class="input-flat" type="password" value={p.api_key ?? ''} oninput={(e) => updateProviderField(idx, { api_key: (e.target as HTMLInputElement).value })} placeholder={p.api_key_env ? `环境变量 ${p.api_key_env}` : 'sk-...'} />
+                  <input class="field border-line-strong" type="password" value={p.api_key ?? ''} oninput={(e) => updateProviderField(idx, { api_key: (e.target as HTMLInputElement).value })} placeholder={p.api_key_env ? `环境变量 ${p.api_key_env}` : 'sk-...'} />
                 </div>
                 <div class="field-col">
                   <span class="field-label">默认模型</span>
-                  <input class="input-flat" value={p.default_model ?? ''} oninput={(e) => updateProviderField(idx, { default_model: (e.target as HTMLInputElement).value })} />
+                  <input class="field border-line-strong" value={p.default_model ?? ''} oninput={(e) => updateProviderField(idx, { default_model: (e.target as HTMLInputElement).value })} />
                 </div>
               </div>
               {#if (ctrl.providerModels[p.id]?.length ?? 0) > 0}
                 <div style="display: flex; flex-wrap: wrap; gap: 6px;">
                   {#each ctrl.providerModels[p.id].slice(0, 24) as mid}
-                    <button class="pill" onclick={() => updateProviderField(idx, { default_model: mid })}>{mid}</button>
+                    <button class="wobble tag border-line" onclick={() => updateProviderField(idx, { default_model: mid })}>{mid}</button>
                   {/each}
                 </div>
               {/if}
             </div>
           {/each}
 
-          <div class="layer-card">
-            <strong>添加自定义 OpenAI 兼容端点</strong>
+          <div class="card-sketch sketch">
+            <span>添加自定义 OpenAI 兼容端点</span>
             <div class="grid-2">
-              <input class="input-flat" bind:value={newProvName} placeholder="名称 例如 Local vLLM" />
-              <input class="input-flat" bind:value={newProvUrl} placeholder="Base URL 例如 http://127.0.0.1:8000/v1" />
-              <input class="input-flat" type="password" bind:value={newProvKey} placeholder="API Key" />
-              <input class="input-flat" bind:value={newProvModel} placeholder="默认模型名" />
+              <input class="field border-line-strong" bind:value={newProvName} placeholder="名称" />
+              <input class="field border-line-strong" bind:value={newProvUrl} placeholder="Base URL" />
+              <input class="field border-line-strong" type="password" bind:value={newProvKey} placeholder="API Key" />
+              <input class="field border-line-strong" bind:value={newProvModel} placeholder="默认模型名" />
             </div>
             <div>
-              <button class="btn-primary" onclick={() => void addCustomProvider()}>添加并保存</button>
+              <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void addCustomProvider()}>添加并保存</button>
             </div>
           </div>
         </div>
@@ -563,74 +602,74 @@
       <div class="panel-page">
         <div class="panel-inner">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">MCP 技能 插件与日志</h2>
-            <button class="btn-primary" onclick={() => void ctrl.reloadMCP()}>重载全部扩展</button>
+            <span style="font-size: 20px;" class="scribble">扩展与日志</span>
+            <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void ctrl.reloadMCP()}>重载扩展</button>
           </div>
 
-          <div class="layer-card">
-            <strong>MCP 服务器</strong>
+          <div class="card-sketch sketch">
+            <span>MCP 服务器</span>
             <div class="grid-2">
-              <input class="input-flat" bind:value={mcpName} placeholder="服务名 例如 filesystem" />
-              <select class="select-flat" bind:value={mcpTransport}>
+              <input class="field border-line-strong" bind:value={mcpName} placeholder="服务名" />
+              <select class="field border-line-strong" bind:value={mcpTransport}>
                 <option value="stdio">Stdio 子进程</option>
                 <option value="http">Streamable HTTP</option>
               </select>
               {#if mcpTransport === 'stdio'}
-                <input class="input-flat" bind:value={mcpCommand} placeholder="可执行命令 例如 npx" />
-                <input class="input-flat" bind:value={mcpArgs} placeholder="参数 空格分隔" />
+                <input class="field border-line-strong" bind:value={mcpCommand} placeholder="可执行命令" />
+                <input class="field border-line-strong" bind:value={mcpArgs} placeholder="参数 空格分隔" />
               {:else}
-                <input class="input-flat" bind:value={mcpURL} placeholder="http(s)://... MCP 地址" />
+                <input class="field border-line-strong" bind:value={mcpURL} placeholder="MCP URL" />
               {/if}
             </div>
             <div>
-              <button class="btn-primary" onclick={() => void addMCP()}>添加 MCP 服务</button>
+              <button class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void addMCP()}>添加服务</button>
             </div>
             {#each ctrl.config?.mcp_servers ?? [] as ms, idx}
-              <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-raised); padding: 8px 12px; border-radius: 8px;">
+              <div class="border-line" style="display: flex; justify-content: space-between; align-items: center; background: var(--sunken); padding: 8px 12px; border-radius: 8px;">
                 <div>
-                  <strong>{ms.name}</strong>
-                  <span class="pill" style="margin-left: 6px;">{ms.transport}</span>
-                  <span style="font-size: 12px; color: var(--fg-muted); margin-left: 8px;">{ms.command || ms.url}</span>
+                  <span>{ms.name}</span>
+                  <span class="tag" style="margin-left: 6px;">{ms.transport}</span>
+                  <span style="font-size: 12px; color: var(--fg-3); margin-left: 8px;">{ms.command || ms.url}</span>
                 </div>
-                <button class="btn-flat btn-err" onclick={() => void removeMCP(idx)}>移除</button>
+                <button class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void removeMCP(idx)}>移除</button>
               </div>
             {/each}
             {#each ctrl.mcpServers as st}
-              <div style="font-size: 12px; color: var(--fg-secondary);">
-                {st.name} 状态 {st.connected ? `已连接 ${st.tools?.length ?? 0} 个工具` : `失败 ${st.error}`}
+              <div style="font-size: 13px; color: var(--fg-2);">
+                {st.name} {st.connected ? `已连接 ${st.tools?.length ?? 0} 个工具` : `连接失败 ${st.error}`}
               </div>
             {/each}
           </div>
 
-          <div class="layer-card">
-            <strong>已发现技能 ({ctrl.skills.length})</strong>
+          <div class="card-sketch sketch">
+            <span>技能 ({ctrl.skills.length})</span>
             {#if ctrl.skills.length === 0}
-              <span style="font-size: 12px; color: var(--fg-muted);">在工作区 .daumini-agent/skills 或用户配置目录放入 SKILL.md 即可自动加载</span>
+              <span style="font-size: 13px; color: var(--fg-3);">暂无已加载技能</span>
             {:else}
               {#each ctrl.skills as sk}
                 <div style="font-size: 13px;">
-                  <strong>{sk.name}</strong> <span class="pill">{sk.scope}</span>
-                  <span style="color: var(--fg-secondary); margin-left: 6px;">{sk.description}</span>
+                  <span>{sk.name}</span> <span class="tag">{sk.scope}</span>
+                  <span style="color: var(--fg-2); margin-left: 6px;">{sk.description}</span>
                 </div>
               {/each}
             {/if}
           </div>
 
-          <div class="layer-card">
-            <strong>已注册工具 ({ctrl.tools.length})</strong>
+          <div class="card-sketch sketch">
+            <span>工具 ({ctrl.tools.length})</span>
             <div style="display: flex; flex-wrap: wrap; gap: 6px;">
               {#each ctrl.tools as tl}
-                <span class="pill">{tl.name}</span>
+                <span class="tag border-line">{tl.name}</span>
               {/each}
             </div>
           </div>
 
-          <div class="layer-card">
+          <div class="card-sketch sketch">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <strong>诊断日志</strong>
-              <button class="btn-flat" onclick={() => void ctrl.loadLogs()}>刷新</button>
+              <span>诊断日志</span>
+              <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => void ctrl.loadLogs()}>刷新</button>
             </div>
-            <pre class="tool-pre">{ctrl.logs.map((l) => `${l.ts} [${l.level}] ${l.component} ${l.msg}`).join('\n') || '暂无日志'}</pre>
+            <pre class="code-surface">{ctrl.logs.map((l) => `${l.ts} [${l.level}] ${l.component} ${l.msg}`).join('\n') || '暂无日志'}</pre>
           </div>
         </div>
       </div>
@@ -640,29 +679,29 @@
   {#if tab === 'work' && showInspector && ctrl.current}
     <aside class="inspector">
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>工作区文件</strong>
-        <button class="icon-btn" onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}>刷新</button>
+        <span>工作区文件</span>
+        <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}>刷新</button>
       </div>
-      <div style="max-height: 280px; overflow-y: auto;">
+      <div class="inspector-files">
         {#each ctrl.files as f}
           <button class="file-row" onclick={() => void ctrl.readFile(f)}>{f}</button>
         {/each}
       </div>
 
       {#if ctrl.filePreview}
-        <div class="layer-card" style="padding: 10px;">
+        <div class="sketch card-sketch" style="padding: 10px; animation: pop-in 0.2s var(--ease-out);">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-family: var(--font-mono); font-size: 12px;">{ctrl.filePreview.path}</span>
-            <button class="icon-btn" onclick={() => (ctrl.filePreview = null)}>关闭</button>
+            <button class="wobble btn btn-sm btn-secondary border-line-strong" onclick={() => (ctrl.filePreview = null)}>关闭</button>
           </div>
-          <pre class="tool-pre" style="max-height: 260px;">{ctrl.filePreview.content}</pre>
+          <pre class="code-surface" style="max-height: 240px;">{ctrl.filePreview.content}</pre>
         </div>
       {/if}
 
-      <div class="layer-card" style="padding: 12px;">
-        <strong>缓存与用量</strong>
-        <div style="font-size: 12px; color: var(--fg-secondary); display: flex; flex-direction: column; gap: 4px;">
-          <div>缓存命中率 {cachePct(ctrl.current.meta.total_usage)}</div>
+      <div class="sketch card-sketch" style="padding: 12px;">
+        <span>缓存与用量</span>
+        <div style="font-size: 13px; color: var(--fg-2); display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums;">
+          <div>缓存命中率 <span class="marked">{cachePct(ctrl.current.meta.total_usage)}</span></div>
           <div>总输入 {totalIn(ctrl.current.meta.total_usage)}</div>
           <div>缓存读取 {ctrl.current.meta.total_usage.cache_read_tokens}</div>
           <div>缓存写入 {ctrl.current.meta.total_usage.cache_write_tokens}</div>

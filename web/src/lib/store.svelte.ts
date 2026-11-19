@@ -51,12 +51,14 @@ export class AgentController {
     } else {
       this.theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    document.documentElement.setAttribute('data-theme', this.theme);
+    document.documentElement.dataset.theme = this.theme;
+    try { localStorage.setItem('daumini.theme', this.theme); } catch {}
   }
 
   toggleTheme() {
     this.theme = this.theme === 'light' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', this.theme);
+    document.documentElement.dataset.theme = this.theme;
+    try { localStorage.setItem('daumini.theme', this.theme); } catch {}
     if (this.config) {
       void this.saveConfig({ ...this.config, theme: this.theme });
     }

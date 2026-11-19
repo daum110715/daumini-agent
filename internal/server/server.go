@@ -521,6 +521,11 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	case strings.HasSuffix(clean, ".svg"):
 		w.Header().Set("Content-Type", "image/svg+xml")
+	case strings.HasSuffix(clean, ".png"):
+		w.Header().Set("Content-Type", "image/png")
+	case strings.HasSuffix(clean, ".woff2"):
+		w.Header().Set("Content-Type", "font/woff2")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	_, _ = w.Write(data)
 }
