@@ -131,6 +131,49 @@ export class AgentController {
     void this.loadSkills(snap.meta.workspace_dir);
   }
 
+  async deleteSession(id: string) {
+    this.error = '';
+    const wasCurrent = this.current?.meta.id === id;
+    if (wasCurrent) {
+      this.closeSSE();
+    }
+    await apiJSON(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await this.refreshSessions();
+    if (wasCurrent) {
+      if (this.sessions.length > 0) {
+        await this.selectSession(this.sessions[0].id);
+      } else {
+        await this.createSession('.');
+      }
+    }
+  }
+
+  async renameSession(id: string, title: string) {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const meta = await apiJSON<SessionMeta>(`/api/sessions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: trimmed })
+    });
+    if (this.current?.meta.id === id) {
+      this.current = { ...this.current, meta };
+    }
+    await this.refreshSessions();
+  }
+
+  async startDauminiOAuth(baseUrl?: string) {
+    this.error = '';
+    const res = await apiJSON<{ authorize_url: string; state: string }>('/api/auth/daumini/start', {
+      method: 'POST',
+      body: JSON.stringify({ base_url: baseUrl || '' })
+    });
+    window.location.assign(res.authorize_url);
+  }
+
+  async syncAfterOAuthCallback() {
+    await this.afterDauminiConnected();
+  }
+
   async forkSession(upToSeq = 0) {
     if (!this.current) return;
     const snap = await apiJSON<SessionSnapshot>(`/api/sessions/${encodeURIComponent(this.current.meta.id)}/fork`, {

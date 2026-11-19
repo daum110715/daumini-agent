@@ -4,15 +4,21 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/daum110715/daumini-agent/internal/agent"
@@ -21,17 +27,27 @@ import (
 	"github.com/daum110715/daumini-agent/internal/types"
 )
 
+type pendingAuth struct {
+	baseURL     string
+	verifier    string
+	redirectURI string
+	expiresAt   time.Time
+}
+
 type Server struct {
-	cfgMgr *config.Manager
-	mgr    *agent.Manager
-	webFS  fs.FS
+	cfgMgr      *config.Manager
+	mgr         *agent.Manager
+	webFS       fs.FS
+	authMu      sync.Mutex
+	pendingAuth map[string]pendingAuth
 }
 
 func New(cfgMgr *config.Manager, mgr *agent.Manager, webFS fs.FS) *Server {
 	return &Server{
-		cfgMgr: cfgMgr,
-		mgr:    mgr,
-		webFS:  webFS,
+		cfgMgr:      cfgMgr,
+		mgr:         mgr,
+		webFS:       webFS,
+		pendingAuth: make(map[string]pendingAuth),
 	}
 }
 
@@ -43,6 +59,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/providers/daumini/login", s.handleDauminiLogin)
 	mux.HandleFunc("POST /api/providers/daumini/logout", s.handleDauminiLogout)
 	mux.HandleFunc("POST /api/providers/daumini/key", s.handleDauminiKey)
+	mux.HandleFunc("POST /api/auth/daumini/start", s.handleDauminiAuthStart)
+	mux.HandleFunc("GET /api/auth/daumini/callback", s.handleDauminiAuthCallback)
 	mux.HandleFunc("GET /api/providers/{id}/models", s.handleProviderModels)
 	mux.HandleFunc("GET /api/mcp", s.handleGetMCP)
 	mux.HandleFunc("POST /api/mcp/reload", s.handleReloadMCP)
@@ -54,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
 	mux.HandleFunc("GET /api/sessions/{id}", s.handleGetSession)
 	mux.HandleFunc("PATCH /api/sessions/{id}", s.handlePatchSession)
+	mux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
 	mux.HandleFunc("POST /api/sessions/{id}/fork", s.handleForkSession)
 	mux.HandleFunc("POST /api/sessions/{id}/messages", s.handleSendMessage)
 	mux.HandleFunc("POST /api/sessions/{id}/cancel", s.handleCancelRun)
@@ -290,6 +309,165 @@ func (s *Server) handleDauminiKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, config.RedactedConfig(updated))
 }
 
+func GeneratePKCE() (verifier, challenge, state string) {
+	vb := make([]byte, 36)
+	sb := make([]byte, 16)
+	_, _ = rand.Read(vb)
+	_, _ = rand.Read(sb)
+	verifier = base64.RawURLEncoding.EncodeToString(vb)
+	sum := sha256.Sum256([]byte(verifier))
+	challenge = base64.RawURLEncoding.EncodeToString(sum[:])
+	state = hex.EncodeToString(sb)
+	return verifier, challenge, state
+}
+
+func (s *Server) handleDauminiAuthStart(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BaseURL string `json:"base_url"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 16*1024)).Decode(&in)
+	base := strings.TrimRight(strings.TrimSpace(in.BaseURL), "/")
+	if base == "" {
+		if p, ok := s.cfgMgr.FindProvider("daumini"); ok && strings.TrimSpace(p.BaseURL) != "" {
+			base = strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
+		} else {
+			base = "https://mini.daum.pw"
+		}
+	}
+	host := r.Host
+	if host == "" {
+		host = s.cfgMgr.Get().WebAddr
+	}
+	redirectURI := "http://" + host + "/api/auth/daumini/callback"
+	verifier, challenge, state := GeneratePKCE()
+
+	s.authMu.Lock()
+	now := time.Now()
+	for k, v := range s.pendingAuth {
+		if now.After(v.expiresAt) {
+			delete(s.pendingAuth, k)
+		}
+	}
+	s.pendingAuth[state] = pendingAuth{
+		baseURL:     base,
+		verifier:    verifier,
+		redirectURI: redirectURI,
+		expiresAt:   now.Add(10 * time.Minute),
+	}
+	s.authMu.Unlock()
+
+	q := url.Values{}
+	q.Set("client", "daumini-agent")
+	q.Set("redirect_uri", redirectURI)
+	q.Set("code_challenge", challenge)
+	q.Set("state", state)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"authorize_url": base + "/authorize?" + q.Encode(),
+		"state":         state,
+	})
+}
+
+func (s *Server) handleDauminiAuthCallback(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if errCode := strings.TrimSpace(q.Get("error")); errCode != "" {
+		http.Redirect(w, r, "/?auth_error="+url.QueryEscape(errCode), http.StatusFound)
+		return
+	}
+	state := strings.TrimSpace(q.Get("state"))
+	code := strings.TrimSpace(q.Get("code"))
+	s.authMu.Lock()
+	pa, ok := s.pendingAuth[state]
+	delete(s.pendingAuth, state)
+	s.authMu.Unlock()
+	if !ok || time.Now().After(pa.expiresAt) || code == "" {
+		http.Redirect(w, r, "/?auth_error="+url.QueryEscape("授权会话已过期，请重新点击一键登录"), http.StatusFound)
+		return
+	}
+	key, email, err := ExchangeDauminiAuthCode(r.Context(), pa.baseURL, code, pa.verifier, pa.redirectURI)
+	if err != nil {
+		http.Redirect(w, r, "/?auth_error="+url.QueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	_, err = s.cfgMgr.Update(func(c *config.Config) error {
+		found := false
+		for i := range c.Providers {
+			if c.Providers[i].ID == "daumini" {
+				c.Providers[i].BaseURL = pa.baseURL
+				c.Providers[i].APIKey = key
+				c.Providers[i].UserEmail = email
+				c.Providers[i].Enabled = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.Providers = append(c.Providers, config.ProviderConfig{
+				ID:           "daumini",
+				Name:         "daumini 中转",
+				Protocol:     config.ProtocolDaumini,
+				BaseURL:      pa.baseURL,
+				APIKey:       key,
+				UserEmail:    email,
+				DefaultModel: "deepseek/deepseek-v4.1flash",
+				Enabled:      true,
+			})
+		}
+		c.DefaultProvider = "daumini"
+		return nil
+	})
+	if err != nil {
+		http.Redirect(w, r, "/?auth_error="+url.QueryEscape(err.Error()), http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, "/?auth=ok", http.StatusFound)
+}
+
+func ExchangeDauminiAuthCode(ctx context.Context, baseURL, code, verifier, redirectURI string) (string, string, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		baseURL = "https://mini.daum.pw"
+	}
+	body, _ := json.Marshal(map[string]string{
+		"code":          code,
+		"code_verifier": verifier,
+		"redirect_uri":  redirectURI,
+	})
+	client := &http.Client{Timeout: 20 * time.Second}
+	doExchange := func(path string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", baseURL)
+		return client.Do(req)
+	}
+	resp, err := doExchange("/backend/auth/app-exchange")
+	if err != nil {
+		return "", "", err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		resp, err = doExchange("/auth/app-exchange")
+		if err != nil {
+			return "", "", err
+		}
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
+	if resp.StatusCode >= 400 {
+		return "", "", parseDauminiError(resp.StatusCode, raw)
+	}
+	var parsed struct {
+		Key   string `json:"key"`
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.Key == "" {
+		return "", "", fmt.Errorf("未从 %s 收到有效密钥", baseURL)
+	}
+	return parsed.Key, parsed.Email, nil
+}
+
 func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	models, err := s.mgr.ListModels(r.Context(), id)
@@ -392,6 +570,14 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.mgr.DeleteSession(r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (s *Server) handlePatchSession(w http.ResponseWriter, r *http.Request) {

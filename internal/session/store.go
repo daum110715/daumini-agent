@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -216,6 +217,23 @@ func (s *Store) readEventsLocked(sessionID string, afterSeq, maxSeq int64) ([]ty
 		out = append(out, ev)
 	}
 	return out, sc.Err()
+}
+
+// DeleteSession removes a session directory and all of its stored events/snapshots.
+func (s *Store) DeleteSession(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(id) == "" || strings.Contains(id, "..") || strings.ContainsAny(id, `/\`) {
+		return fmt.Errorf("invalid session id %q", id)
+	}
+	dir := s.sessionDir(id)
+	if _, err := os.Stat(dir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("session %q not found", id)
+		}
+		return err
+	}
+	return os.RemoveAll(dir)
 }
 
 // ForkSession creates an independent child session preserving message history up to upToSeq (or all if <= 0).

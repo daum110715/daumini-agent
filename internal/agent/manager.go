@@ -200,6 +200,32 @@ func (m *Manager) GetSnapshot(sessionID string) (types.SessionSnapshot, error) {
 	return m.store.GetSnapshot(sessionID)
 }
 
+func (m *Manager) DeleteSession(sessionID string) error {
+	m.mu.Lock()
+	ar := m.active[sessionID]
+	m.mu.Unlock()
+	if ar != nil {
+		ar.cancel()
+		select {
+		case <-ar.done:
+		case <-time.After(2 * time.Second):
+		}
+	}
+	m.mu.Lock()
+	if subs := m.subs[sessionID]; subs != nil {
+		for ch := range subs {
+			delete(subs, ch)
+			close(ch)
+		}
+		delete(m.subs, sessionID)
+	}
+	delete(m.active, sessionID)
+	delete(m.queues, sessionID)
+	delete(m.steers, sessionID)
+	m.mu.Unlock()
+	return m.store.DeleteSession(sessionID)
+}
+
 func (m *Manager) UpdateSessionSettings(sessionID string, providerID, modelID string, mode types.ApprovalMode, workspaceDir string, archived *bool, title string) (types.SessionMeta, error) {
 	if strings.TrimSpace(workspaceDir) != "" {
 		absDir, err := filepath.Abs(workspaceDir)
@@ -265,12 +291,18 @@ func (m *Manager) Subscribe(sessionID string, afterSeq int64) (<-chan types.Sess
 	m.mu.Unlock()
 
 	unsub := func() {
+		var shouldClose bool
 		m.mu.Lock()
 		if set := m.subs[sessionID]; set != nil {
-			delete(set, ch)
+			if _, ok := set[ch]; ok {
+				delete(set, ch)
+				shouldClose = true
+			}
 		}
 		m.mu.Unlock()
-		close(ch)
+		if shouldClose {
+			close(ch)
+		}
 	}
 	return ch, missed, snap, unsub, nil
 }
