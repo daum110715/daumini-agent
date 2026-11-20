@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   Theme Pack: Atelier (暖昼工坊 / 暮夜靛海)
-   - Warm sunlit alabaster & terracotta-jade daylight + deep midnight-indigo & amber-emerald dark
-   - True borderless flat tonal elevation (structured by surface tone & warm ambient light, not grey box lines)
+   Theme Pack: Atelier (晴空工坊 / 星夜深海)
+   - Crisp porcelain & sky-mist daylight + deep midnight-cobalt dark (zero muddy yellow, zero flat dead grey)
+   - True borderless flat tonal elevation with airy luminance & crisp contrast
    - Completely independent motion language:
      * Optical aperture reveals (clip-path curtains) & 3D perspective unfold (in motion.ts)
      * Luminous diagonal sheen sweeps & colored ambient glow on primary actions
@@ -14,97 +14,97 @@
 [data-style="atelier"][data-theme="light"],
 [data-style="atelier"]:root {
   color-scheme: light;
-  --bg: #fbf7f0;
-  --panel: #fffdf9;
-  --card: #fffdf9;
-  --raised: #efe6d8;
-  --sunken: #f3ece0;
-  --field: #fffdf9;
-  --line: rgb(122 86 52 / 0.09);
-  --line-strong: rgb(122 86 52 / 0.18);
-  --fg: #241b15;
-  --fg-2: #625245;
-  --fg-3: #968373;
+  --bg: #fafbff;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --raised: #e8eef8;
+  --sunken: #f1f5fb;
+  --field: #ffffff;
+  --line: rgb(30 58 118 / 0.08);
+  --line-strong: rgb(30 58 118 / 0.16);
+  --fg: #0f172a;
+  --fg-2: #475569;
+  --fg-3: #8292ab;
 
-  --accent: #d95b38;
-  --accent-hover: #c34b2a;
-  --accent-fg: #fffaf5;
-  --accent-soft: #fdece4;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-fg: #ffffff;
+  --accent-soft: #eef2ff;
 
-  --mark: #2f5597;
+  --mark: #0284c7;
   --mark-fg: #ffffff;
-  --mark-soft: #e9f0fb;
+  --mark-soft: #e0f2fe;
 
-  --ok: #12806a;
-  --ok-soft: #e2f5f0;
-  --warn: #c77714;
-  --warn-soft: #fef1dc;
-  --bad: #c93742;
-  --bad-soft: #fdebed;
+  --ok: #0d9488;
+  --ok-soft: #e6f9f6;
+  --warn: #d97706;
+  --warn-soft: #fef3c7;
+  --bad: #e11d48;
+  --bad-soft: #ffe4e8;
 
-  --glass: rgb(251 247 240 / 0.78);
-  --scrim: rgb(36 24 16 / 0.28);
+  --glass: rgb(250 251 255 / 0.8);
+  --scrim: rgb(15 23 42 / 0.28);
 
-  --shadow-ambient: 0 10px 28px -12px rgb(115 68 34 / 0.14), 0 2px 6px -1px rgb(115 68 34 / 0.06);
-  --shadow-subtle: 0 2px 8px -3px rgb(115 68 34 / 0.1), 0 1px 2px rgb(115 68 34 / 0.04);
-  --shadow-pop: 0 26px 60px -16px rgb(68 38 18 / 0.22), 0 4px 14px -4px rgb(68 38 18 / 0.08);
-  --shadow-accent: 0 10px 24px -8px rgb(217 91 56 / 0.42);
+  --shadow-ambient: 0 10px 28px -12px rgb(30 58 138 / 0.13), 0 2px 6px -1px rgb(30 58 138 / 0.05);
+  --shadow-subtle: 0 2px 8px -3px rgb(30 58 138 / 0.09), 0 1px 2px rgb(30 58 138 / 0.04);
+  --shadow-pop: 0 26px 60px -16px rgb(15 23 42 / 0.2), 0 4px 14px -4px rgb(30 58 138 / 0.08);
+  --shadow-accent: 0 10px 24px -8px rgb(79 70 229 / 0.42);
 
-  --atelier-sidebar: #f3ece0;
-  --atelier-inspector: #f5efe4;
-  --atelier-user-bg: #fcebe2;
-  --atelier-code-bg: #f6efe4;
-  --atelier-pill-bg: #fffdf9;
-  --atelier-glow-1: rgb(244 152 104 / 0.13);
-  --atelier-glow-2: rgb(32 164 136 / 0.08);
-  --atelier-top-sheen: inset 0 1px 0 rgb(255 255 255 / 0.85);
+  --atelier-sidebar: #f1f5fb;
+  --atelier-inspector: #f3f6fc;
+  --atelier-user-bg: #ebefff;
+  --atelier-code-bg: #f4f7fc;
+  --atelier-pill-bg: #ffffff;
+  --atelier-glow-1: rgb(99 102 241 / 0.09);
+  --atelier-glow-2: rgb(20 184 166 / 0.08);
+  --atelier-top-sheen: inset 0 1px 0 rgb(255 255 255 / 0.92);
 }
 
 [data-style="atelier"][data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d111c;
-  --panel: #161d2f;
-  --card: #161d2f;
-  --raised: #212b45;
-  --sunken: #111625;
-  --field: #141a2b;
-  --line: rgb(168 188 232 / 0.08);
-  --line-strong: rgb(168 188 232 / 0.16);
-  --fg: #f3efe8;
-  --fg-2: #a9b5ce;
-  --fg-3: #6c7a98;
+  --bg: #0b1020;
+  --panel: #151e35;
+  --card: #151e35;
+  --raised: #1e2a48;
+  --sunken: #0f1629;
+  --field: #121a30;
+  --line: rgb(165 189 240 / 0.08);
+  --line-strong: rgb(165 189 240 / 0.16);
+  --fg: #f1f5f9;
+  --fg-2: #a5b4cf;
+  --fg-3: #6b7d9e;
 
-  --accent: #f2845c;
-  --accent-hover: #ff9873;
-  --accent-fg: #180d09;
-  --accent-soft: rgb(242 132 92 / 0.16);
+  --accent: #7c8cff;
+  --accent-hover: #919eff;
+  --accent-fg: #0b1020;
+  --accent-soft: rgb(124 140 255 / 0.16);
 
-  --mark: #7aa7ff;
-  --mark-fg: #0d111c;
-  --mark-soft: rgb(122 167 255 / 0.15);
+  --mark: #38bdf8;
+  --mark-fg: #0b1020;
+  --mark-soft: rgb(56 189 248 / 0.15);
 
-  --ok: #38d9a9;
-  --ok-soft: rgb(56 217 169 / 0.14);
-  --warn: #f8b84e;
-  --warn-soft: rgb(248 184 78 / 0.15);
-  --bad: #ff6b7a;
-  --bad-soft: rgb(255 107 122 / 0.15);
+  --ok: #2dd4bf;
+  --ok-soft: rgb(45 212 191 / 0.14);
+  --warn: #fbbf24;
+  --warn-soft: rgb(251 191 36 / 0.15);
+  --bad: #fb7185;
+  --bad-soft: rgb(251 113 133 / 0.15);
 
-  --glass: rgb(13 17 28 / 0.78);
-  --scrim: rgb(5 8 15 / 0.64);
+  --glass: rgb(11 16 32 / 0.8);
+  --scrim: rgb(4 8 18 / 0.64);
 
   --shadow-ambient: 0 14px 34px -12px rgb(0 0 0 / 0.52), inset 0 1px 0 rgb(255 255 255 / 0.055);
   --shadow-subtle: 0 4px 12px -4px rgb(0 0 0 / 0.36), inset 0 1px 0 rgb(255 255 255 / 0.045);
   --shadow-pop: 0 28px 68px -14px rgb(0 0 0 / 0.76), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --shadow-accent: 0 12px 28px -8px rgb(242 132 92 / 0.42);
+  --shadow-accent: 0 12px 28px -8px rgb(124 140 255 / 0.44);
 
-  --atelier-sidebar: #111626;
-  --atelier-inspector: #101523;
-  --atelier-user-bg: rgb(242 132 92 / 0.15);
-  --atelier-code-bg: #111727;
-  --atelier-pill-bg: #1d263e;
-  --atelier-glow-1: rgb(242 132 92 / 0.1);
-  --atelier-glow-2: rgb(56 217 169 / 0.075);
+  --atelier-sidebar: #0f1629;
+  --atelier-inspector: #0e1527;
+  --atelier-user-bg: rgb(124 140 255 / 0.16);
+  --atelier-code-bg: #10172a;
+  --atelier-pill-bg: #1b2642;
+  --atelier-glow-1: rgb(124 140 255 / 0.11);
+  --atelier-glow-2: rgb(45 212 191 / 0.08);
   --atelier-top-sheen: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
@@ -210,9 +210,9 @@
   overflow: hidden;
 }
 
-/* Primary action: warm luminous gradient + diagonal silk sheen sweep on hover */
+/* Primary action: crisp indigo-violet gradient + diagonal silk sheen sweep on hover */
 [data-style="atelier"] .btn-primary {
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 82%, #ff9b6a));
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 78%, #818cf8));
   color: var(--accent-fg);
   border: 0;
   box-shadow: var(--shadow-subtle), inset 0 1px 0 rgb(255 255 255 / 0.24);
@@ -234,7 +234,7 @@
   transform: translateX(125%) skewX(-16deg);
 }
 [data-style="atelier"] .btn-primary:active {
-  box-shadow: 0 3px 10px -4px rgb(217 91 56 / 0.45);
+  box-shadow: 0 3px 10px -4px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 [data-style="atelier"] .btn-accent {
