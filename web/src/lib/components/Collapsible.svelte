@@ -199,4 +199,36 @@
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.35; transform: scale(0.75); }
   }
+
+  /* Atelier independent styling & silk-curtain collapse motion */
+  :global([data-style="atelier"]) .col {
+    border: 0;
+    border-radius: 11px;
+    background: var(--sunken);
+    box-shadow: inset 3px 0 0 transparent;
+    transition: background-color 220ms var(--ease-out), box-shadow 260ms var(--ease-out);
+  }
+  :global([data-style="atelier"]) .col.tool {
+    background: var(--panel);
+    box-shadow: var(--shadow-subtle), inset 3px 0 0 transparent;
+  }
+  :global([data-style="atelier"]) .col.open {
+    box-shadow: var(--shadow-subtle), inset 3px 0 0 var(--accent);
+  }
+  :global([data-style="atelier"]) .col.streaming {
+    box-shadow: var(--shadow-subtle), inset 3px 0 0 var(--ok);
+  }
+  :global([data-style="atelier"]) .col-chev {
+    transition: transform 280ms var(--ease-out), color 180ms;
+  }
+  :global([data-style="atelier"]) .col-panel {
+    transition: grid-template-rows 320ms var(--ease-out);
+  }
+  :global([data-style="atelier"]) .col-fade {
+    transform: translateX(-6px);
+    transition: opacity 220ms var(--ease-out), transform 280ms var(--ease-out);
+  }
+  :global([data-style="atelier"]) .col-fade.open {
+    transform: translateX(0);
+  }
 </style>

@@ -14,12 +14,12 @@ export interface ThemePack {
 export const THEME_PACKS: ThemePack[] = [
   {
     id: 'atelier',
-    name: '静谧工作台',
-    tagline: '温润平面层级 适合长时阅读编码',
-    motionTag: '流体阻尼动效',
+    name: '暖昼工坊',
+    tagline: '暖杏陶瓷与暮夜靛蓝 无框色块光影层次',
+    motionTag: '光学揭幕与流光动效',
     preview: {
-      light: ['#F6F5F1', '#FFFFFF', '#3B5BDB', '#2B8A3E'],
-      dark: ['#131417', '#1D2026', '#748FFC', '#51CF66']
+      light: ['#FBF7F0', '#F3ECE0', '#D95B38', '#12806A'],
+      dark: ['#0D111C', '#171E31', '#F2845C', '#38D9A9']
     }
   },
   {

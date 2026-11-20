@@ -244,4 +244,37 @@
     color: var(--fg-3);
     line-height: 1.4;
   }
+
+  /* Atelier borderless tonal popover */
+  :global([data-style="atelier"]) .tp-menu {
+    border: 0;
+    border-radius: 16px;
+    padding: 12px;
+  }
+  :global([data-style="atelier"]) .tp-mode-row {
+    border: 0;
+    border-radius: 9px;
+    padding: 3px;
+  }
+  :global([data-style="atelier"]) .tp-mode-btn.selected {
+    color: var(--accent);
+    box-shadow: var(--shadow-subtle);
+  }
+  :global([data-style="atelier"]) .tp-pack {
+    border: 0;
+    border-radius: 11px;
+    padding: 10px 11px;
+  }
+  :global([data-style="atelier"]) .tp-pack:hover {
+    transform: translateX(2px);
+  }
+  :global([data-style="atelier"]) .tp-pack.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  :global([data-style="atelier"]) .tp-motion-tag {
+    border: 0;
+    background: var(--panel);
+    color: var(--accent);
+  }
 </style>
