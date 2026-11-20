@@ -1853,3 +1853,104 @@ a:hover {
     display: none;
   }
 }
+
+/* ── Workspace chip, in-agent route link button & scroll-to-bottom pill ──── */
+.topbar-path-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-2);
+  max-width: 240px;
+  min-width: 0;
+  transition: background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms;
+}
+.topbar-path-btn svg {
+  width: 13px;
+  height: 13px;
+  color: var(--fg-3);
+  flex-shrink: 0;
+}
+.topbar-path-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-path-btn:hover {
+  background: var(--raised);
+  border-color: var(--line-strong);
+  color: var(--fg);
+}
+
+.empty-ws-pill {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-2);
+  transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out);
+}
+.empty-ws-pill svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.empty-ws-pill:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.empty-ws-act {
+  font-family: var(--font-sans);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.usage-link-btn {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: transparent;
+  transition: background-color 140ms var(--ease-out), color 140ms;
+}
+.usage-link-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.scroll-bottom-btn {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 8px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  box-shadow: var(--shadow-pop);
+  transition: background-color 150ms var(--ease-out), color 150ms, transform 150ms var(--ease-out);
+}
+.scroll-bottom-btn svg {
+  width: 14px;
+  height: 14px;
+}
+.scroll-bottom-btn:hover {
+  background: var(--raised);
+  color: var(--fg);
+}

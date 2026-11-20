@@ -86,7 +86,7 @@ func FormatIndex(skills []Skill) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("Available skills (call skill_read with name when relevant):\n")
+	sb.WriteString("skills (use skill_read):\n")
 	for _, s := range skills {
 		if s.Description != "" {
 			fmt.Fprintf(&sb, "- %s: %s\n", s.Name, s.Description)
@@ -140,8 +140,8 @@ func (t *SkillReadTool) IsMutating() bool { return false }
 func (t *SkillReadTool) Spec() tools.ToolSpec {
 	return tools.ToolSpec{
 		Name:        "skill_read",
-		Description: "Load the full SKILL.md instructions for a named skill discovered in the workspace or user config.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Skill name from available skills list"}},"required":["name"]}`),
+		Description: "Load SKILL.md for a named skill.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`),
 	}
 }
 

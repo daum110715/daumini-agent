@@ -43,8 +43,8 @@ func (t *fsListTool) IsMutating() bool { return false }
 func (t *fsListTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "fs_list",
-		Description: "List files and directories inside the workspace root. Skips .git, node_modules, dist, build.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative directory path (default '.')"},"limit":{"type":"integer","description":"Maximum entries (default 200)"}}}`),
+		Description: "List workspace files/dirs.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"limit":{"type":"integer"}}}`),
 	}
 }
 
@@ -70,8 +70,8 @@ func (t *fsSearchTool) IsMutating() bool { return false }
 func (t *fsSearchTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "fs_search",
-		Description: "Search text or regex matches across non-binary files in the workspace.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Search query or regex"},"path":{"type":"string","description":"Relative subdirectory (default '.')"},"regex":{"type":"boolean","description":"Treat query as regex (default false)"},"max_matches":{"type":"integer","description":"Maximum matches (default 80)"}},"required":["query"]}`),
+		Description: "Search text or regex in workspace files.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"path":{"type":"string"},"regex":{"type":"boolean"},"max_matches":{"type":"integer"}},"required":["query"]}`),
 	}
 }
 
@@ -160,8 +160,8 @@ func (t *fsReadTool) IsMutating() bool { return false }
 func (t *fsReadTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "fs_read",
-		Description: "Read a workspace file with line#hash anchors (e.g. 12#a3f1|code) required for safe fs_edit calls.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Workspace-relative path"},"start_line":{"type":"integer","description":"1-based start line (default 1)"},"end_line":{"type":"integer","description":"1-based end line (default start_line+199)"}},"required":["path"]}`),
+		Description: "Read file with line#hash anchors.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"start_line":{"type":"integer"},"end_line":{"type":"integer"}},"required":["path"]}`),
 	}
 }
 
@@ -218,8 +218,8 @@ func (t *fsEditTool) IsMutating() bool { return true }
 func (t *fsEditTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "fs_edit",
-		Description: "Edit a previously read file using line#hash anchors (start_anchor, optional end_anchor) to prevent stale-line corruption.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"start_anchor":{"type":"string","description":"Anchor from fs_read, e.g. '12#a3f1'"},"end_anchor":{"type":"string","description":"Inclusive end anchor (default equals start_anchor)"},"replacement":{"type":"string","description":"New text replacing the anchored line span"}},"required":["path","start_anchor","replacement"]}`),
+		Description: "Replace line span using line#hash anchors from fs_read.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"start_anchor":{"type":"string"},"end_anchor":{"type":"string"},"replacement":{"type":"string"}},"required":["path","start_anchor","replacement"]}`),
 	}
 }
 
@@ -314,7 +314,7 @@ func (t *fsWriteTool) IsMutating() bool { return true }
 func (t *fsWriteTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "fs_write",
-		Description: "Create a new workspace file or overwrite an already-read file.",
+		Description: "Create file or overwrite read file.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`),
 	}
 }
@@ -350,8 +350,8 @@ func (t *shellExecTool) IsMutating() bool { return true }
 func (t *shellExecTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "shell_exec",
-		Description: "Run a non-interactive shell command inside the workspace. Only non-zero exit codes mark errors; large outputs spill to .agent-logs/.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"timeout_sec":{"type":"integer","description":"Timeout in seconds (default 60, max 300)"}},"required":["command"]}`),
+		Description: "Run shell command in workspace.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"},"timeout_sec":{"type":"integer"}},"required":["command"]}`),
 	}
 }
 
@@ -468,7 +468,7 @@ func (t *todoUpdateTool) IsMutating() bool { return false }
 func (t *todoUpdateTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "todo_update",
-		Description: "Replace the active task checklist so long multi-step runs stay anchored at the prompt tail.",
+		Description: "Update active task checklist.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"content":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","completed"]}},"required":["id","content","status"]}}},"required":["items"]}`),
 	}
 }
@@ -492,8 +492,8 @@ func (t *webFetchTool) IsMutating() bool { return false }
 func (t *webFetchTool) Spec() ToolSpec {
 	return ToolSpec{
 		Name:        "web_fetch",
-		Description: "Fetch public HTTP/HTTPS URL text or HTML stripped into compact readable lines (blocks private/loopback IPs).",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"Public http(s) URL"}},"required":["url"]}`),
+		Description: "Fetch public HTTP(S) URL text.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}`),
 	}
 }
 

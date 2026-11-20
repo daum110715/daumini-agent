@@ -23,14 +23,7 @@ import (
 	"github.com/daum110715/daumini-agent/internal/types"
 )
 
-const staticSystemPrompt = `You are daumini-agent, an autonomous software engineering and local-workspace coding agent running directly on the user's machine.
-
-Core rules:
-1. Read before editing: always call fs_read before fs_edit or overwriting an existing file.
-2. Anchor edits carefully: pass exact line#hash anchors returned by fs_read to fs_edit.
-3. Verify claims against actual tool output: never claim tests, builds, or file contents succeeded unless observed in this session.
-4. Keep workspace changes minimal, clean, and reversible.
-5. Runtime status updates, todos, and skill indexes appear inside trailing <system-reminder> blocks rather than rewriting this system prompt.`
+const staticSystemPrompt = `Local coding agent. Call fs_read before fs_edit/fs_write; pass exact line#hash anchors to fs_edit. Keep edits minimal. Report only verified tool output.`
 
 type Manager struct {
 	cfgMgr   *config.Manager
@@ -183,6 +176,7 @@ func (m *Manager) CreateSession(workspaceDir, title, providerID, modelID string,
 	if strings.TrimSpace(title) == "" {
 		title = filepath.Base(absDir)
 	}
+	m.cfgMgr.AddRecentWorkspace(absDir)
 	return m.store.CreateSession(types.SessionMeta{
 		Title:        title,
 		WorkspaceDir: absDir,
@@ -236,6 +230,7 @@ func (m *Manager) UpdateSessionSettings(sessionID string, providerID, modelID st
 			return types.SessionMeta{}, err
 		}
 		workspaceDir = absDir
+		m.cfgMgr.AddRecentWorkspace(absDir)
 	}
 	snap, err := m.store.UpdateSnapshot(sessionID, func(s *types.SessionSnapshot) error {
 		if providerID != "" {
@@ -929,22 +924,22 @@ func (m *Manager) appendTailReminder(snap types.SessionSnapshot, remainingTurns 
 	}
 
 	var notes []string
-	notes = append(notes, fmt.Sprintf("workspace=%s approval_mode=%s", snap.Meta.WorkspaceDir, snap.Meta.ApprovalMode))
+	notes = append(notes, fmt.Sprintf("cwd=%s mode=%s", snap.Meta.WorkspaceDir, snap.Meta.ApprovalMode))
 	if remainingTurns <= 2 {
-		notes = append(notes, fmt.Sprintf("budget_warning=only_%d_turns_remaining_wrap_up_or_summarize_blockers", remainingTurns))
+		notes = append(notes, fmt.Sprintf("turns_left=%d wrap_up", remainingTurns))
 	}
 	if len(snap.Meta.Todos) > 0 {
 		var lines []string
 		for _, td := range snap.Meta.Todos {
 			lines = append(lines, fmt.Sprintf("- [%s] %s (%s)", td.Status, td.Content, td.ID))
 		}
-		notes = append(notes, "Active todos:\n"+strings.Join(lines, "\n"))
+		notes = append(notes, "todos:\n"+strings.Join(lines, "\n"))
 	}
 	if skIndex := skills.FormatIndex(m.skills.Discover(snap.Meta.WorkspaceDir)); skIndex != "" {
 		notes = append(notes, skIndex)
 	}
 
-	reminder := "\n<system-reminder>\n" + strings.Join(notes, "\n\n") + "\n</system-reminder>"
+	reminder := "\n<system-reminder>\n" + strings.Join(notes, "\n") + "\n</system-reminder>"
 	lastIdx := len(out) - 1
 	if out[lastIdx].Role == types.RoleUser {
 		blocks := append([]types.Block(nil), out[lastIdx].Blocks...)
@@ -980,7 +975,7 @@ func extraSystem(extra string) string {
 	if extra == "" {
 		return ""
 	}
-	return "\n\nUser custom instructions:\n" + extra
+	return "\n" + extra
 }
 
 // subagentTool runs an isolated depth-1 leaf agent without recursive subagent spawning or parent KV-cache pollution.
@@ -992,8 +987,8 @@ func (t *subagentTool) IsMutating() bool { return false }
 func (t *subagentTool) Spec() tools.ToolSpec {
 	return tools.ToolSpec{
 		Name:        "subagent",
-		Description: "Launch an isolated depth-1 leaf subagent with a fresh context to research or execute a bounded task, returning only a concise summary.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"Self-contained task brief"},"read_only":{"type":"boolean","description":"Restrict subagent to read/search/list tools (default true)"},"max_turns":{"type":"integer","description":"Turn limit 1-12 (default 8)"}},"required":["task"]}`),
+		Description: "Run an isolated subagent on a bounded task; returns a brief summary.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"task":{"type":"string"},"read_only":{"type":"boolean"},"max_turns":{"type":"integer"}},"required":["task"]}`),
 	}
 }
 
@@ -1056,7 +1051,7 @@ func (t *subagentTool) Execute(ctx context.Context, ec *tools.ExecContext, args 
 		resp, err := t.mgr.llm.Generate(ctx, llm.GenerateRequest{
 			Provider:     prov,
 			ModelID:      modelID,
-			SystemPrompt: "You are a concise depth-1 leaf subagent. Investigate carefully using tools and return a crisp factual summary with exact file paths and findings.",
+			SystemPrompt: "Concise research subagent. Use tools and return a brief factual summary with file paths.",
 			Messages:     msgs,
 			Tools:        subReg.Specs(),
 		})

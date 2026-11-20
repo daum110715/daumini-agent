@@ -81,6 +81,15 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/workspace/files", s.handleWorkspaceFiles)
 	mux.HandleFunc("GET /api/workspace/file", s.handleWorkspaceFile)
+	mux.HandleFunc("GET /api/fs/browse", s.handleFSBrowse)
+	mux.HandleFunc("POST /api/fs/mkdir", s.handleFSMkdir)
+	mux.HandleFunc("POST /api/fs/pick-folder", s.handleFSPickFolder)
+
+	mux.HandleFunc("GET /api/daumini/status", s.handleDauminiStatus)
+	mux.HandleFunc("GET /api/daumini/generation/{id}", s.handleDauminiGeneration)
+	mux.HandleFunc("GET /api/daumini/models", s.handleDauminiCatalog)
+	mux.HandleFunc("GET /api/daumini/model-endpoints", s.handleDauminiModelEndpoints)
+	mux.HandleFunc("GET /api/daumini/usage-ledger", s.handleDauminiUsageLedger)
 
 	mux.HandleFunc("/", s.handleStatic)
 	return s.withLocalGuard(mux)
@@ -117,6 +126,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"default_provider": cfg.DefaultProvider,
 		"default_model":    cfg.DefaultModel,
 		"theme":            cfg.Theme,
+		"ui_style":         cfg.UIStyle,
 	})
 }
 
@@ -161,6 +171,12 @@ func (s *Server) handlePutConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Theme != "" {
 			c.Theme = in.Theme
+		}
+		if in.UIStyle != "" {
+			c.UIStyle = in.UIStyle
+		}
+		if in.RecentWorkspaces != nil {
+			c.RecentWorkspaces = in.RecentWorkspaces
 		}
 		if in.WebAddr != "" {
 			c.WebAddr = in.WebAddr

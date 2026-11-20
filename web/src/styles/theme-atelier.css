@@ -1,0 +1,627 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   Theme Pack: Atelier (静谧工作台)
+   - Flat tonal layering (no dot grids, no 9-slice ink strokes, no hatching)
+   - Warm alabaster daylight & velvet obsidian dark palettes built for 8h+ work
+   - Completely independent motion system: critically-damped exponential glide,
+     tactile micro-press, gliding accent rail, silk shimmer, calm breathing aura
+   ════════════════════════════════════════════════════════════════════════════ */
+
+[data-style="atelier"][data-theme="light"],
+[data-style="atelier"]:root {
+  color-scheme: light;
+  --bg: #f6f5f1;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --raised: #eceae3;
+  --sunken: #f0eee8;
+  --field: #ffffff;
+  --line: rgb(31 35 40 / 0.08);
+  --line-strong: rgb(31 35 40 / 0.16);
+  --fg: #1f2328;
+  --fg-2: #525965;
+  --fg-3: #838b96;
+  --accent: #3b5bdb;
+  --accent-hover: #314dc0;
+  --accent-fg: #ffffff;
+  --accent-soft: #edf2ff;
+  --mark: #d9480f;
+  --mark-fg: #ffffff;
+  --mark-soft: #edf2ff;
+  --ok: #2b8a3e;
+  --ok-soft: #ebfbee;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --bad: #c92a2a;
+  --bad-soft: #feeceb;
+  --glass: rgb(246 245 241 / 0.84);
+  --scrim: rgb(20 22 27 / 0.34);
+  --shadow-pop: 0 16px 40px -10px rgb(15 20 30 / 0.14), 0 2px 6px rgb(15 20 30 / 0.05);
+  --shadow-subtle: 0 1px 2px rgb(15 20 30 / 0.05);
+  --atelier-sidebar: #f0eee8;
+  --atelier-inspector: #f2f0ea;
+  --atelier-user-bg: #e8edfb;
+  --atelier-code-bg: #f3f2ed;
+  --atelier-pill-bg: #ffffff;
+}
+
+[data-style="atelier"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131417;
+  --panel: #1b1e24;
+  --card: #1a1d23;
+  --raised: #242831;
+  --sunken: #16181d;
+  --field: #1a1d23;
+  --line: rgb(255 255 255 / 0.075);
+  --line-strong: rgb(255 255 255 / 0.15);
+  --fg: #e7e9ee;
+  --fg-2: #a3abb8;
+  --fg-3: #6e7685;
+  --accent: #748ffc;
+  --accent-hover: #5c7cfa;
+  --accent-fg: #0e1117;
+  --accent-soft: rgb(116 143 252 / 0.15);
+  --mark: #ff8787;
+  --mark-fg: #131417;
+  --mark-soft: rgb(116 143 252 / 0.16);
+  --ok: #51cf66;
+  --ok-soft: rgb(81 207 102 / 0.13);
+  --warn: #fab005;
+  --warn-soft: rgb(250 176 5 / 0.14);
+  --bad: #ff6b6b;
+  --bad-soft: rgb(255 107 107 / 0.14);
+  --glass: rgb(19 20 23 / 0.82);
+  --scrim: rgb(0 0 0 / 0.62);
+  --shadow-pop: 0 20px 48px -12px rgb(0 0 0 / 0.65), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-subtle: 0 1px 3px rgb(0 0 0 / 0.35);
+  --atelier-sidebar: #17191e;
+  --atelier-inspector: #16181d;
+  --atelier-user-bg: rgb(116 143 252 / 0.16);
+  --atelier-code-bg: #15171c;
+  --atelier-pill-bg: #232730;
+}
+
+[data-style="atelier"] {
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;     /* 12px crisp sans */
+  --text-sm: 0.84375rem;  /* 13.5px */
+  --text-base: 0.90625rem;/* 14.5px comfortable long-form reading */
+  --text-md: 1rem;        /* 16px */
+  --text-lg: 1.0625rem;   /* 17px */
+  --text-xl: 1.3125rem;   /* 21px */
+  --text-2xl: 1.625rem;   /* 26px */
+
+  /* Atelier independent motion curves (critically damped exponential glide) */
+  --ease-atelier: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-atelier-press: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: var(--ease-atelier);
+  --ease-spring: var(--ease-atelier);
+}
+
+/* Strip whiteboard dots, 9-slice sketch strokes, hatch stripes, and red scribbles */
+[data-style="atelier"] .paper {
+  background-color: var(--bg);
+  background-image: none;
+}
+
+[data-style="atelier"] .border-line,
+[data-style="atelier"] .border-line-strong,
+[data-style="atelier"] .sketch {
+  border-image: none;
+  border-image-source: none;
+  border: 1px solid var(--line);
+}
+
+[data-style="atelier"] .border-line-strong,
+[data-style="atelier"] .sketch {
+  border-color: var(--line-strong);
+}
+
+[data-style="atelier"] .hatch-blue,
+[data-style="atelier"] .hatch-yellow,
+[data-style="atelier"] .hatch-red,
+[data-style="atelier"] .hatch-green,
+[data-style="atelier"] .hatch-label {
+  background-image: none;
+  -webkit-text-stroke: 0;
+  paint-order: normal;
+}
+[data-style="atelier"] .hatch-label svg {
+  filter: none;
+}
+
+[data-style="atelier"] .scribble::after {
+  display: none;
+}
+
+[data-style="atelier"] .marked {
+  background: var(--ok-soft);
+  color: var(--ok);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+/* ── Atelier Independent Motion System ───────────────────────────────────── */
+
+/* Replace playful wobble rotation with architectural micro-lift & tactile compression */
+[data-style="atelier"] .wobble {
+  transition:
+    transform 180ms var(--ease-atelier),
+    background-color 160ms var(--ease-atelier),
+    color 160ms var(--ease-atelier),
+    border-color 160ms var(--ease-atelier),
+    box-shadow 200ms var(--ease-atelier);
+}
+[data-style="atelier"] .wobble:hover {
+  transform: translateY(-0.5px);
+}
+[data-style="atelier"] .wobble:active {
+  transform: scale(0.978);
+  transition-duration: 75ms;
+  transition-timing-function: var(--ease-atelier-press);
+}
+
+[data-style="atelier"] .btn {
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+[data-style="atelier"] .btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+[data-style="atelier"] .btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--accent) 42%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+[data-style="atelier"] .btn-accent {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 24%, transparent);
+}
+[data-style="atelier"] .btn-accent:hover {
+  background: color-mix(in srgb, var(--warn-soft) 75%, var(--warn));
+}
+[data-style="atelier"] .btn-danger {
+  background: var(--bad);
+  color: #ffffff;
+  border-color: transparent;
+}
+[data-style="atelier"] .btn-danger:hover {
+  background: color-mix(in srgb, var(--bad) 88%, #000);
+  box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--bad) 40%, transparent);
+}
+[data-style="atelier"] .btn-quiet {
+  background: var(--panel);
+  color: var(--fg-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+}
+[data-style="atelier"] .btn-quiet:hover {
+  background: var(--raised);
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+[data-style="atelier"] .btn-ghost {
+  color: var(--fg-2);
+}
+[data-style="atelier"] .btn-ghost:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
+
+/* Shell & flat tonal panel architecture */
+[data-style="atelier"] .sidebar {
+  background: var(--atelier-sidebar);
+  border-image: none;
+  border-right: 1px solid var(--line);
+  padding: 12px 10px 10px;
+}
+
+[data-style="atelier"] .sidebar-footer {
+  border-image: none;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+/* Precision gliding accent rail for sidebar nav & active session */
+[data-style="atelier"] .side-nav-marker {
+  background: var(--atelier-pill-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 8px;
+}
+[data-style="atelier"] .side-nav-marker::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--accent);
+}
+[data-style="atelier"] .side-nav-marker.glide {
+  transition: translate 280ms var(--ease-atelier), height 280ms var(--ease-atelier), opacity 180ms;
+}
+[data-style="atelier"] .side-nav-btn {
+  padding: 0 11px;
+  font-weight: 500;
+  transition: color 160ms var(--ease-atelier);
+}
+[data-style="atelier"] .side-nav-btn:hover svg {
+  transform: translateX(1px);
+  color: var(--accent);
+}
+[data-style="atelier"] .side-nav-btn.active {
+  color: var(--fg);
+}
+[data-style="atelier"] .side-nav-btn.active svg {
+  color: var(--accent);
+}
+
+[data-style="atelier"] .new-session-btn {
+  background: var(--atelier-pill-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  color: var(--fg);
+  font-weight: 500;
+}
+[data-style="atelier"] .new-session-btn:hover {
+  border-color: var(--line-strong);
+  background: var(--panel);
+}
+
+[data-style="atelier"] .session-marker {
+  background: var(--atelier-pill-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 8px;
+}
+[data-style="atelier"] .session-marker::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2.5px;
+  border-radius: 0 99px 99px 0;
+  background: var(--accent);
+}
+[data-style="atelier"] .session-marker.glide {
+  transition: translate 270ms var(--ease-atelier), height 270ms var(--ease-atelier), opacity 180ms;
+}
+[data-style="atelier"] .session-row {
+  border-radius: 8px;
+}
+[data-style="atelier"] .session-row:hover:not(.active) {
+  background: color-mix(in srgb, var(--raised) 72%, transparent);
+}
+[data-style="atelier"] .session-actions {
+  transform: translateX(4px);
+  transition: opacity 150ms var(--ease-atelier), transform 180ms var(--ease-atelier);
+  background: color-mix(in srgb, var(--atelier-sidebar) 90%, transparent);
+}
+[data-style="atelier"] .session-row.active .session-actions {
+  background: color-mix(in srgb, var(--atelier-pill-bg) 92%, transparent);
+}
+[data-style="atelier"] .session-row:hover .session-actions,
+[data-style="atelier"] .session-row:focus-within .session-actions,
+[data-style="atelier"] .session-row.confirming .session-actions {
+  transform: translateX(0);
+}
+
+[data-style="atelier"] .account-pill {
+  background: var(--atelier-pill-bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+/* Topbar */
+[data-style="atelier"] .topbar {
+  border-image: none;
+  border-bottom: 1px solid var(--line);
+  min-height: 46px;
+  padding: 6px 16px;
+}
+[data-style="atelier"] .topbar-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+[data-style="atelier"] .todo-strip {
+  border-image: none;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Conversation Feed — calm editorial rhythm */
+[data-style="atelier"] .turn-user {
+  animation: atelier-turn-in 210ms var(--ease-atelier) both;
+}
+[data-style="atelier"] .turn-assistant {
+  animation: atelier-turn-in 230ms var(--ease-atelier) both;
+}
+@keyframes atelier-turn-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+[data-style="atelier"] .msg-user {
+  background: var(--atelier-user-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 14px;
+  color: var(--fg);
+}
+[data-style="atelier"] .turn-rail-user,
+[data-style="atelier"] .turn-rail-tail {
+  background: var(--line);
+}
+[data-style="atelier"] .knot-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+[data-style="atelier"] .knot-ping {
+  width: 17px;
+  height: 17px;
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  animation: atelier-breathe 2.2s ease-in-out infinite;
+}
+@keyframes atelier-breathe {
+  0%, 100% { transform: scale(0.82); opacity: 0.55; }
+  50% { transform: scale(1.38); opacity: 0.14; }
+}
+
+[data-style="atelier"] .assistant-speaker {
+  font-weight: 500;
+  color: var(--fg-3);
+}
+
+/* Editorial Markdown typography */
+[data-style="atelier"] .md-prose {
+  font-size: var(--text-base);
+  line-height: 1.66;
+}
+[data-style="atelier"] .md-prose h1,
+[data-style="atelier"] .md-prose h2,
+[data-style="atelier"] .md-prose h3,
+[data-style="atelier"] .md-prose h4 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+[data-style="atelier"] .md-prose strong {
+  font-weight: 600;
+  background: none;
+  color: var(--fg);
+}
+[data-style="atelier"] .md-prose blockquote {
+  border-left: 2.5px solid var(--accent);
+  background: var(--sunken);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 12px;
+}
+[data-style="atelier"] .md-prose :not(pre) > code {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  padding: 0.08em 0.38em;
+  border-radius: 5px;
+  font-size: 0.85em;
+}
+[data-style="atelier"] .md-code-wrap {
+  background: var(--atelier-code-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+[data-style="atelier"] .md-code-head {
+  background: color-mix(in srgb, var(--raised) 50%, transparent);
+}
+[data-style="atelier"] .md-copy-btn:hover {
+  transform: none;
+  background: var(--raised);
+}
+[data-style="atelier"] .md-table-wrap {
+  border-radius: 10px;
+  background: var(--card);
+}
+[data-style="atelier"] .md-table th {
+  font-weight: 600;
+}
+
+/* Composer — clean architectural floating surface + silk shimmer */
+[data-style="atelier"] .composer-box {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 10px 13px 8px;
+  box-shadow: 0 2px 10px -4px rgb(15 20 30 / 0.08);
+  transition: border-color 180ms var(--ease-atelier), box-shadow 220ms var(--ease-atelier);
+}
+[data-style="atelier"] .composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent), 0 6px 18px -8px rgb(15 20 30 / 0.12);
+}
+[data-style="atelier"] .composer-scan {
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 2px;
+}
+[data-style="atelier"] .composer-scan-bar {
+  width: 36%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: atelier-shimmer 1.8s var(--ease-atelier) infinite;
+}
+@keyframes atelier-shimmer {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(340%); }
+}
+
+/* Right Inspector */
+[data-style="atelier"] .inspector {
+  background: var(--atelier-inspector);
+  border-image: none;
+  border-left: 1px solid var(--line);
+}
+[data-style="atelier"] .inspector-section {
+  border-image: none;
+  border-bottom: 1px solid var(--line);
+}
+[data-style="atelier"] .stat-grid {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+[data-style="atelier"] .cache-meter {
+  height: 4px;
+  background: var(--raised);
+}
+[data-style="atelier"] .cache-meter-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 72%, var(--accent)), var(--ok));
+  transition: width 380ms var(--ease-atelier);
+}
+[data-style="atelier"] .model-meta-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+[data-style="atelier"] .file-row {
+  border-radius: 7px;
+  transition: background-color 140ms var(--ease-atelier), color 140ms var(--ease-atelier);
+}
+[data-style="atelier"] .file-row:hover {
+  transform: none;
+  background: color-mix(in srgb, var(--raised) 80%, transparent);
+}
+[data-style="atelier"] .file-row.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+[data-style="atelier"] .file-ref-btn {
+  transform: translateX(3px);
+  transition: opacity 140ms var(--ease-atelier), transform 160ms var(--ease-atelier), background-color 140ms;
+}
+[data-style="atelier"] .file-row-wrap:hover .file-ref-btn,
+[data-style="atelier"] .file-ref-btn:focus-visible {
+  transform: translateX(0);
+}
+[data-style="atelier"] .file-ref-btn:hover {
+  transform: scale(1.04);
+}
+
+/* Cards, fields, tags, modals */
+[data-style="atelier"] .card-section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-subtle);
+}
+[data-style="atelier"] .page-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+[data-style="atelier"] .field {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--field);
+  transition: border-color 160ms var(--ease-atelier), box-shadow 180ms var(--ease-atelier);
+}
+[data-style="atelier"] .field:focus-visible {
+  border-color: var(--accent);
+  background: var(--field);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+[data-style="atelier"] .tag {
+  border-radius: 6px;
+  font-weight: 500;
+}
+[data-style="atelier"] .tag.mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+[data-style="atelier"] .modal-backdrop {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+[data-style="atelier"] .modal-card {
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-pop);
+}
+[data-style="atelier"] .toast {
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  font-weight: 500;
+}
+
+/* Segmented control override for Atelier */
+[data-style="atelier"] .seg-group {
+  border-image: none;
+  border: 1px solid var(--line);
+  background: var(--sunken);
+  border-radius: 9px;
+}
+[data-style="atelier"] .seg-pill {
+  background: var(--atelier-pill-bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 6px;
+}
+[data-style="atelier"] .seg-pill.glide {
+  transition: translate 260ms var(--ease-atelier), width 260ms var(--ease-atelier);
+}
+[data-style="atelier"] .seg-btn {
+  font-weight: 500;
+}
+
+/* Slash menu & autocomplete */
+[data-style="atelier"] .slash-menu {
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+}
+[data-style="atelier"] .slash-item {
+  border-radius: 8px;
+  transition: background-color 120ms var(--ease-atelier);
+}
+[data-style="atelier"] .slash-item.focused,
+[data-style="atelier"] .slash-item:hover {
+  background: var(--accent-soft);
+  transform: none;
+}
+
+/* Starter chips */
+[data-style="atelier"] .starter-chip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-subtle);
+}
+[data-style="atelier"] .starter-chip:hover {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+
+/* Atelier clean View Transitions (crisp cross-dissolve, zero blur haze) */
+[data-style="atelier"]::view-transition-group(main-view) {
+  animation-duration: 210ms;
+  animation-timing-function: var(--ease-atelier);
+}
+[data-style="atelier"]::view-transition-old(main-view) {
+  animation: atelier-vt-out 100ms ease-in both;
+}
+[data-style="atelier"]::view-transition-new(main-view) {
+  animation: atelier-vt-in 190ms var(--ease-atelier) both;
+}
+@keyframes atelier-vt-out {
+  to { opacity: 0; }
+}
+@keyframes atelier-vt-in {
+  from { opacity: 0; transform: translate3d(0, 3px, 0); }
+}

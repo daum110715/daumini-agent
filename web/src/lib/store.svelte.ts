@@ -2,13 +2,20 @@ import type {
   AgentConfig,
   ApprovalDecision,
   ApprovalMode,
+  ColorTheme,
+  DauminiGenerationResponse,
+  DauminiStatus,
+  DauminiUsageLedger,
+  FSBrowseResponse,
   LogEntry,
   MCPServerStatus,
   ModelInfo,
   SessionMeta,
   SessionSnapshot,
-  SkillInfo
+  SkillInfo,
+  UIStyle
 } from './types';
+import { isValidUIStyle } from './themes';
 
 async function apiJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -38,6 +45,25 @@ function normalizeSnapshot(snap: SessionSnapshot): SessionSnapshot {
   };
 }
 
+const CATALOG_CACHE_KEY = 'daumini.catalog.v1';
+
+function readCachedCatalog(): Record<string, ModelInfo[]> {
+  try {
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ModelInfo[]>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCachedCatalog(map: Record<string, ModelInfo[]>) {
+  try {
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(map));
+  } catch {}
+}
+
 export class AgentController {
   config = $state<AgentConfig | null>(null);
   sessions = $state<SessionMeta[]>([]);
@@ -52,32 +78,105 @@ export class AgentController {
   files = $state<string[]>([]);
   filePreview = $state<{ path: string; content: string } | null>(null);
   providerModels = $state<Record<string, string[]>>({});
-  providerCatalog = $state<Record<string, ModelInfo[]>>({});
+  providerCatalog = $state<Record<string, ModelInfo[]>>(readCachedCatalog());
   loadingModels = $state<Record<string, boolean>>({});
   error = $state('');
   busy = $state(false);
-  theme = $state<'light' | 'dark'>('light');
+  theme = $state<ColorTheme>('light');
+  uiStyle = $state<UIStyle>('atelier');
+  currency = $state<'USD' | 'CNY'>('USD');
+  cnyRate = $state<number>(7.25);
+  dauminiStatus = $state<DauminiStatus | null>(null);
+  dauminiLedger = $state<DauminiUsageLedger | null>(null);
 
   private es: EventSource | null = null;
   private lastSeq = 0;
 
-  initTheme(pref: string) {
-    if (pref === 'light' || pref === 'dark') {
-      this.theme = pref;
-    } else {
-      this.theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  constructor() {
+    // Hydrate providerModels from cached catalog immediately so first paint has model labels
+    const cached = this.providerCatalog;
+    const idMap: Record<string, string[]> = {};
+    for (const [k, list] of Object.entries(cached)) {
+      idMap[k] = (list ?? []).map((m) => m.id);
     }
+    this.providerModels = idMap;
+    try {
+      const savedCur = localStorage.getItem('daumini.currency');
+      if (savedCur === 'CNY' || savedCur === 'USD') this.currency = savedCur;
+    } catch {}
+  }
+
+  initAppearance(themePref: string, stylePref?: string) {
+    if (themePref === 'light' || themePref === 'dark') {
+      this.theme = themePref;
+    } else {
+      const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('daumini.theme') : null;
+      if (stored === 'light' || stored === 'dark') {
+        this.theme = stored;
+      } else {
+        this.theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+    }
+
+    const storedStyle = typeof localStorage !== 'undefined' ? localStorage.getItem('daumini.style') : null;
+    if (isValidUIStyle(stylePref)) {
+      this.uiStyle = stylePref;
+    } else if (isValidUIStyle(storedStyle)) {
+      this.uiStyle = storedStyle;
+    } else {
+      this.uiStyle = 'atelier';
+    }
+
     document.documentElement.dataset.theme = this.theme;
-    try { localStorage.setItem('daumini.theme', this.theme); } catch {}
+    document.documentElement.dataset.style = this.uiStyle;
+    try {
+      localStorage.setItem('daumini.theme', this.theme);
+      localStorage.setItem('daumini.style', this.uiStyle);
+    } catch {}
+  }
+
+  setTheme(next: ColorTheme) {
+    this.theme = next;
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('daumini.theme', next); } catch {}
+    if (this.config) {
+      void this.saveConfig({ ...this.config, theme: next });
+    }
   }
 
   toggleTheme() {
-    this.theme = this.theme === 'light' ? 'dark' : 'light';
-    document.documentElement.dataset.theme = this.theme;
-    try { localStorage.setItem('daumini.theme', this.theme); } catch {}
+    this.setTheme(this.theme === 'light' ? 'dark' : 'light');
+  }
+
+  setUIStyle(next: UIStyle) {
+    this.uiStyle = next;
+    document.documentElement.dataset.style = next;
+    try { localStorage.setItem('daumini.style', next); } catch {}
     if (this.config) {
-      void this.saveConfig({ ...this.config, theme: this.theme });
+      void this.saveConfig({ ...this.config, ui_style: next });
     }
+  }
+
+  setCurrency(next: 'USD' | 'CNY') {
+    this.currency = next;
+    try { localStorage.setItem('daumini.currency', next); } catch {}
+  }
+
+  formatNUSD(nusd?: number, digits = 4): string {
+    if (!nusd) return this.currency === 'CNY' ? '¥0.0000' : '$0.0000';
+    const usd = nusd / 1e9;
+    if (this.currency === 'CNY') {
+      return `¥${(usd * this.cnyRate).toFixed(digits)}`;
+    }
+    return `$${usd.toFixed(digits)}`;
+  }
+
+  formatPricePerM(nusdPerMillion?: number): string {
+    if (!nusdPerMillion || nusdPerMillion <= 0) return '—';
+    const usd = nusdPerMillion / 1e9;
+    const val = this.currency === 'CNY' ? usd * this.cnyRate : usd;
+    const sym = this.currency === 'CNY' ? '¥' : '$';
+    return val >= 0.01 ? `${sym}${val.toFixed(2)}` : `${sym}${val.toFixed(3)}`;
   }
 
   async bootstrap() {
@@ -89,7 +188,7 @@ export class AgentController {
       apiJSON<{ tools: { name: string; description: string }[] }>('/api/tools')
     ]);
     this.config = cfg;
-    this.initTheme(cfg.theme);
+    this.initAppearance(cfg.theme, cfg.ui_style);
     this.sessions = sesRes.sessions ?? [];
     this.mcpServers = mcpRes.servers ?? [];
     this.tools = toolsRes.tools ?? [];
@@ -99,9 +198,9 @@ export class AgentController {
     } else {
       await this.createSession('.');
     }
-    // Preload public daumini model catalog (capabilities, reasoning levels, cache pricing) in background.
     if (cfg.providers.some((p) => p.id === 'daumini' && p.enabled)) {
       void this.fetchProviderModels('daumini').catch(() => {});
+      void this.loadDauminiStatus().catch(() => {});
     }
   }
 
@@ -122,6 +221,8 @@ export class AgentController {
     });
     await this.refreshSessions();
     await this.selectSession(meta.id);
+    // Refresh config to pick up updated recent_workspaces
+    void apiJSON<AgentConfig>('/api/config').then((c) => (this.config = c)).catch(() => {});
   }
 
   async selectSession(id: string) {
@@ -200,8 +301,10 @@ export class AgentController {
     this.current = { ...this.current, meta };
     await this.refreshSessions();
     if (patch.workspace_dir) {
+      this.filePreview = null;
       void this.loadWorkspaceFiles(meta.id);
       void this.loadSkills(meta.workspace_dir);
+      void apiJSON<AgentConfig>('/api/config').then((c) => (this.config = c)).catch(() => {});
     }
   }
 
@@ -269,12 +372,16 @@ export class AgentController {
       method: 'POST'
     });
     this.config = saved;
+    this.dauminiStatus = null;
   }
 
   private async afterDauminiConnected() {
     let preferredModel = '';
     try {
-      await this.fetchProviderModels('daumini');
+      await Promise.all([
+        this.fetchProviderModels('daumini'),
+        this.loadDauminiStatus().catch(() => {})
+      ]);
       const models = this.providerModels['daumini'] ?? [];
       if (models.length > 0) {
         preferredModel =
@@ -306,10 +413,69 @@ export class AgentController {
         ...this.providerModels,
         [providerId]: list.map((m) => m.id)
       };
+      writeCachedCatalog(this.providerCatalog);
     } finally {
       this.loadingModels = { ...this.loadingModels, [providerId]: false };
     }
   }
+
+  // ── Graphical Filesystem Picker APIs ──────────────────────────────────────
+
+  async browseFS(path = '', hidden = false): Promise<FSBrowseResponse> {
+    const q = new URLSearchParams();
+    if (path) q.set('path', path);
+    if (hidden) q.set('hidden', '1');
+    return apiJSON<FSBrowseResponse>(`/api/fs/browse?${q.toString()}`);
+  }
+
+  async mkdirFS(parent: string, name: string): Promise<{ path: string; name: string }> {
+    return apiJSON<{ path: string; name: string }>('/api/fs/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ parent, name })
+    });
+  }
+
+  async pickNativeFolder(initialDir = ''): Promise<{ path: string; cancelled: boolean }> {
+    return apiJSON<{ path: string; cancelled: boolean }>('/api/fs/pick-folder', {
+      method: 'POST',
+      body: JSON.stringify({ initial_dir: initialDir, title: '选择工作区文件夹' })
+    });
+  }
+
+  // ── In-Agent daumini Platform APIs ────────────────────────────────────────
+
+  async loadDauminiStatus(): Promise<DauminiStatus> {
+    const st = await apiJSON<DauminiStatus>('/api/daumini/status');
+    this.dauminiStatus = st;
+    const cny = st.currencies?.data?.find((c) => c.code === 'CNY');
+    const rate = cny?.rate_per_usd || cny?.rate;
+    if (rate && rate > 0) this.cnyRate = rate;
+    return st;
+  }
+
+  async loadDauminiGeneration(genId: string): Promise<DauminiGenerationResponse> {
+    return apiJSON<DauminiGenerationResponse>(`/api/daumini/generation/${encodeURIComponent(genId)}`);
+  }
+
+  async loadDauminiCatalogRaw(): Promise<{ data: any[]; currencies?: DauminiStatus['currencies']; base_url?: string }> {
+    const res = await apiJSON<{ data: any[]; currencies?: DauminiStatus['currencies']; base_url?: string }>('/api/daumini/models');
+    const cny = res.currencies?.data?.find((c) => c.code === 'CNY');
+    const rate = cny?.rate_per_usd || cny?.rate;
+    if (rate && rate > 0) this.cnyRate = rate;
+    return res;
+  }
+
+  async loadDauminiModelEndpoints(modelId: string): Promise<any> {
+    return apiJSON<any>(`/api/daumini/model-endpoints?id=${encodeURIComponent(modelId)}`);
+  }
+
+  async loadDauminiLedger(): Promise<DauminiUsageLedger> {
+    const res = await apiJSON<DauminiUsageLedger>('/api/daumini/usage-ledger');
+    this.dauminiLedger = res;
+    return res;
+  }
+
+  // ── Workspace & Extensions ────────────────────────────────────────────────
 
   async reloadMCP() {
     const res = await apiJSON<{ servers: MCPServerStatus[] }>('/api/mcp/reload', { method: 'POST' });
@@ -361,9 +527,7 @@ export class AgentController {
           this.lastSeq = snap.meta.last_seq;
         }
         void this.refreshSessions();
-      } catch {
-        // ignore transient errors
-      }
+      } catch {}
     };
 
     es.addEventListener('session.snapshot', (e) => {
@@ -426,11 +590,6 @@ export class AgentController {
       void this.loadWorkspaceFiles(sessionId);
     });
 
-    es.addEventListener('tool.results', () => {
-      this.activeTools = {};
-      void refreshSnap();
-    });
-
     es.addEventListener('approval.requested', () => {
       void refreshSnap();
     });
@@ -439,23 +598,19 @@ export class AgentController {
       void refreshSnap();
     });
 
-    es.addEventListener('todo.updated', () => {
-      void refreshSnap();
-    });
-
-    es.addEventListener('run.finished', (e) => {
-      const ev = JSON.parse((e as MessageEvent).data) as { payload: { status: string; error?: string } };
-      if (ev.payload.status === 'failed' && ev.payload.error) {
-        this.error = ev.payload.error;
-      }
+    es.addEventListener('run.finished', () => {
       this.activeStreamText = '';
       this.activeStreamThinking = '';
       this.activeTools = {};
       void refreshSnap();
     });
+
+    es.onerror = () => {
+      // Browser EventSource reconnects automatically.
+    };
   }
 
-  closeSSE() {
+  private closeSSE() {
     if (this.es) {
       this.es.close();
       this.es = null;

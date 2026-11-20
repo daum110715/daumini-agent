@@ -1,34 +1,41 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { flip } from 'svelte/animate';
-  import { cubicIn, cubicOut } from 'svelte/easing';
-  import { fade, fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
   import { AgentController } from './lib/store.svelte';
   import { renderMarkdown } from './lib/markdown';
-  import { dialogIn, pop, popOut, turnIn } from './lib/motion';
+  import { dialogIn, drawerIn, drawerOut, pop, popOut, turnIn } from './lib/motion';
   import Collapsible from './lib/components/Collapsible.svelte';
+  import GenerationInspectorModal from './lib/components/GenerationInspectorModal.svelte';
   import ModelPicker from './lib/components/ModelPicker.svelte';
   import Picker from './lib/components/Picker.svelte';
+  import PlatformView from './lib/components/PlatformView.svelte';
   import Segmented from './lib/components/Segmented.svelte';
+  import ThemePopover from './lib/components/ThemePopover.svelte';
   import Wordmark from './lib/components/Wordmark.svelte';
+  import WorkspacePickerModal from './lib/components/WorkspacePickerModal.svelte';
   import type { AgentConfig, ApprovalMode, Block, MCPServerConfig, ModelInfo, ProviderConfig, Run, Usage } from './lib/types';
 
   const ctrl = new AgentController();
 
-  let tab = $state<'work' | 'providers' | 'extensions'>('work');
+  type MainTab = 'work' | 'platform' | 'providers' | 'extensions';
+  let tab = $state<MainTab>('work');
   let showInspector = $state(true);
   let promptText = $state('');
-  let newWorkspace = $state('.');
-  let showNewBox = $state(false);
   let toastText = $state('');
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Modals & Inspectors
+  let workspaceModal = $state<{ open: boolean; mode: 'create' | 'switch' }>({ open: false, mode: 'create' });
+  let inspectGenerationId = $state<string | null>(null);
 
   // Session inline rename & delete confirm state
   let renamingId = $state<string | null>(null);
   let renameDraft = $state('');
   let deletingId = $state<string | null>(null);
 
-  // One-click daumini login modal state (fallback / account switcher)
+  // One-click daumini login modal state
   let showLoginModal = $state(false);
   let loginMode = $state<'oauth' | 'account' | 'key'>('oauth');
   let dmBase = $state('https://mini.daum.pw');
@@ -56,14 +63,18 @@
 
   let feedEl = $state<HTMLDivElement | null>(null);
   let composerEl = $state<HTMLTextAreaElement | null>(null);
-  let userScrolledUp = false;
+  let userScrolledUp = $state(false);
   let fileFilter = $state('');
   let slashIndex = $state(0);
+  let mentionIndex = $state(0);
+  let promptHistory = $state<string[]>([]);
+  let historyCursor = $state(-1);
 
   // Gliding marker for sidebar navigation
-  const navItems: { id: 'work' | 'providers' | 'extensions'; label: string }[] = [
+  const navItems: { id: MainTab; label: string }[] = [
     { id: 'work', label: '工作台' },
-    { id: 'providers', label: '模型' },
+    { id: 'platform', label: '平台' },
+    { id: 'providers', label: '渠道' },
     { id: 'extensions', label: '扩展' }
   ];
   let navButtons = $state<HTMLButtonElement[]>([]);
@@ -108,7 +119,7 @@
     });
   });
 
-  // Auto-grow composer textarea up to 200px (compact workbench height)
+  // Auto-grow composer textarea up to 200px
   $effect(() => {
     void promptText;
     if (!composerEl) return;
@@ -164,15 +175,36 @@
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        showLoginModal = false;
-        showNewBox = false;
-        renamingId = null;
-        deletingId = null;
-        if (ctrl.filePreview) ctrl.filePreview = null;
+        if (inspectGenerationId) {
+          inspectGenerationId = null;
+          return;
+        }
+        if (workspaceModal.open) {
+          workspaceModal = { ...workspaceModal, open: false };
+          return;
+        }
+        if (showLoginModal) {
+          showLoginModal = false;
+          return;
+        }
+        if (renamingId || deletingId) {
+          renamingId = null;
+          deletingId = null;
+          return;
+        }
+        if (ctrl.filePreview) {
+          ctrl.filePreview = null;
+          return;
+        }
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        composerEl?.focus();
+        tab = 'work';
+        void tick().then(() => composerEl?.focus());
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        workspaceModal = { open: true, mode: 'create' };
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -181,7 +213,6 @@
 
   const dauminiProvider = $derived(ctrl.config?.providers.find((p) => p.id === 'daumini'));
   const dauminiConnected = $derived(Boolean(dauminiProvider?.api_key));
-  const dauminiBase = $derived((dauminiProvider?.base_url || 'https://mini.daum.pw').replace(/\/+$/, ''));
   const currentProvider = $derived(
     ctrl.config?.providers.find((p) => p.id === ctrl.current?.meta.provider_id)
   );
@@ -228,6 +259,20 @@
     return ctrl.files.filter((f) => f.toLowerCase().includes(q));
   });
 
+  // @ file mention detection at the end of promptText
+  const mentionQuery = $derived.by(() => {
+    const m = promptText.match(/(?:^|\s)@([^\s@]*)$/);
+    return m ? m[1] : null;
+  });
+
+  const mentionMatches = $derived.by(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    const onlyFiles = ctrl.files.filter((f) => !f.endsWith('/'));
+    const hits = q ? onlyFiles.filter((f) => f.toLowerCase().includes(q)) : onlyFiles;
+    return hits.slice(0, 10);
+  });
+
   interface SlashCommand {
     cmd: string;
     label: string;
@@ -236,12 +281,15 @@
   }
 
   const allSlashCommands: SlashCommand[] = [
-    { cmd: '/new', label: '/new', desc: '新建空白会话', run: () => void handleQuickNewSession() },
+    { cmd: '/new', label: '/new', desc: '在当前目录新建会话', run: () => void handleQuickNewSession() },
+    { cmd: '/workspace', label: '/workspace', desc: '图形化选择工作区目录', run: () => (workspaceModal = { open: true, mode: 'switch' }) },
+    { cmd: '/platform', label: '/platform', desc: '打开平台路由费用与模型市场', run: () => switchTab('platform') },
+    { cmd: '/style', label: '/style', desc: '切换静谧工作台与手绘白板主题', run: () => withTransition(() => ctrl.setUIStyle(ctrl.uiStyle === 'atelier' ? 'sketch' : 'atelier')) },
+    { cmd: '/theme', label: '/theme', desc: '切换浅色深色模式', run: () => withTransition(() => ctrl.toggleTheme()) },
     { cmd: '/fork', label: '/fork', desc: '分叉当前会话', run: () => void ctrl.forkSession(0) },
     { cmd: '/login', label: '/login', desc: '一键授权登录 daumini', run: () => void triggerOneClickOAuth() },
-    { cmd: '/providers', label: '/providers', desc: '管理模型与渠道', run: () => switchTab('providers') },
-    { cmd: '/extensions', label: '/extensions', desc: '查看 MCP 技能与日志', run: () => switchTab('extensions') },
-    { cmd: '/theme', label: '/theme', desc: '切换浅色深色主题', run: () => withTransition(() => ctrl.toggleTheme()) }
+    { cmd: '/providers', label: '/providers', desc: '管理模型渠道', run: () => switchTab('providers') },
+    { cmd: '/extensions', label: '/extensions', desc: '查看 MCP 技能与诊断', run: () => switchTab('extensions') }
   ];
 
   const slashMatches = $derived.by(() => {
@@ -297,7 +345,7 @@
     }
   }
 
-  function switchTab(next: 'work' | 'providers' | 'extensions') {
+  function switchTab(next: MainTab) {
     withTransition(() => {
       tab = next;
       if (next === 'extensions') void ctrl.loadLogs();
@@ -333,16 +381,17 @@
     return `${cacheRatio(u)}%`;
   }
 
-  function fmtPriceM(nusd?: number): string {
-    if (!nusd || nusd <= 0) return '—';
-    const usd = nusd / 1e9;
-    return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
-  }
-
   function speakerName(modelId?: string): string {
     const id = modelId || ctrl.current?.meta.model_id || '';
     const info = currentCatalog.find((m) => m.id === id);
     return info?.name || id;
+  }
+
+  function toolFilePath(name?: string, input?: unknown): string {
+    if (!input || typeof input !== 'object') return '';
+    if (name !== 'fs_read' && name !== 'fs_edit' && name !== 'fs_write') return '';
+    const p = (input as Record<string, unknown>).path;
+    return typeof p === 'string' ? p : '';
   }
 
   function toolSummary(name?: string, input?: unknown): string {
@@ -357,7 +406,7 @@
     }
     if (typeof obj.query === 'string' && obj.query) return obj.query;
     if (typeof obj.pattern === 'string' && obj.pattern) return obj.pattern;
-    if (name === 'todo_update' && Array.isArray(obj.todos)) return `${obj.todos.length} 项任务`;
+    if (name === 'todo_update' && Array.isArray(obj.items)) return `${obj.items.length} 项任务`;
     return '';
   }
 
@@ -366,6 +415,12 @@
     promptText = promptText.trim() ? `${promptText.trimEnd()} ${ref} ` : `请查看 ${ref} `;
     composerEl?.focus();
     showToast(`已引用 ${filePath}`);
+  }
+
+  function applyMention(filePath: string) {
+    promptText = promptText.replace(/(^|\s)@([^\s@]*)$/, `$1\`${filePath}\` `);
+    mentionIndex = 0;
+    void tick().then(() => composerEl?.focus());
   }
 
   function runSlash(cmd: SlashCommand) {
@@ -384,11 +439,6 @@
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
     return String(n);
-  }
-
-  function fmtCost(nusd?: number): string {
-    if (!nusd) return '';
-    return `$${(nusd / 1e9).toFixed(4)}`;
   }
 
   function fmtJSON(v: unknown): string {
@@ -410,6 +460,11 @@
     if (!feedEl) return;
     const dist = feedEl.scrollHeight - feedEl.scrollTop - feedEl.clientHeight;
     userScrolledUp = dist > 72;
+  }
+
+  function scrollToBottom() {
+    userScrolledUp = false;
+    feedEl?.scrollTo({ top: feedEl.scrollHeight, behavior: 'smooth' });
   }
 
   function handleFeedClick(e: MouseEvent) {
@@ -439,7 +494,13 @@
   async function handleSend(mode: 'queue' | 'steer' | 'interrupt' = 'queue', overrideText?: string) {
     const txt = (overrideText ?? promptText).trim();
     if (!txt) return;
-    if (!overrideText) promptText = '';
+    if (!overrideText) {
+      promptText = '';
+      if (promptHistory[promptHistory.length - 1] !== txt) {
+        promptHistory = [...promptHistory.slice(-29), txt];
+      }
+      historyCursor = -1;
+    }
     userScrolledUp = false;
     try {
       await ctrl.sendMessage(txt, mode);
@@ -450,18 +511,27 @@
 
   async function handleQuickNewSession() {
     tab = 'work';
-    showNewBox = false;
     const dir = ctrl.current?.meta.workspace_dir || '.';
     await ctrl.createSession(dir);
     showToast('已新建会话');
     void tick().then(() => composerEl?.focus());
   }
 
-  async function handleCreateSessionWithDir() {
-    showNewBox = false;
-    await ctrl.createSession(newWorkspace.trim() || '.');
-    showToast('已新建会话');
-    void tick().then(() => composerEl?.focus());
+  async function handleWorkspaceConfirm(path: string, action: 'create' | 'switch') {
+    workspaceModal = { ...workspaceModal, open: false };
+    tab = 'work';
+    try {
+      if (action === 'switch' && ctrl.current) {
+        await ctrl.updateSession({ workspace_dir: path });
+        showToast('已切换工作区目录');
+      } else {
+        await ctrl.createSession(path);
+        showToast('已在新工作区创建会话');
+      }
+      void tick().then(() => composerEl?.focus());
+    } catch (e) {
+      ctrl.error = e instanceof Error ? e.message : String(e);
+    }
   }
 
   async function commitRename(id: string) {
@@ -602,27 +672,39 @@
     await ctrl.saveConfig(next);
     showToast('已移除 MCP 服务');
   }
+
+  async function handlePlatformSelectModel(modelId: string) {
+    if (ctrl.current) {
+      await ctrl.updateSession({ provider_id: 'daumini', model_id: modelId });
+      showToast(`当前会话已切换至 ${modelId}`);
+      switchTab('work');
+    }
+  }
+
+  async function handlePlatformSetDefaultModel(modelId: string) {
+    if (!ctrl.config) return;
+    const next: AgentConfig = structuredClone($state.snapshot(ctrl.config));
+    next.default_provider = 'daumini';
+    next.default_model = modelId;
+    const dm = next.providers.find((p) => p.id === 'daumini');
+    if (dm) dm.default_model = modelId;
+    await ctrl.saveConfig(next);
+    showToast(`默认模型已设为 ${modelId}`);
+  }
 </script>
 
 <div class="shell {tab === 'work' && showInspector ? 'with-inspector' : ''}">
   <aside class="sidebar">
     <div class="brand-row">
-      <span style="font-size: 20px;">
+      <span style="font-size: 19px;">
         <Wordmark live={isRunning} />
       </span>
-      <button
-        type="button"
-        class="wobble btn btn-icon btn-ghost theme-btn"
-        title={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
-        aria-label={ctrl.theme === 'light' ? '切换深色' : '切换浅色'}
-        onclick={() => withTransition(() => ctrl.toggleTheme())}
-      >
-        {#if ctrl.theme === 'light'}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-        {:else}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        {/if}
-      </button>
+      <ThemePopover
+        uiStyle={ctrl.uiStyle}
+        theme={ctrl.theme}
+        onSelectStyle={(st) => withTransition(() => ctrl.setUIStyle(st))}
+        onSelectTheme={(th) => withTransition(() => ctrl.setTheme(th))}
+      />
     </div>
 
     <nav class="side-nav" aria-label="主导航">
@@ -642,6 +724,8 @@
         >
           {#if item.id === 'work'}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {:else if item.id === 'platform'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
           {:else if item.id === 'providers'}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
           {:else}
@@ -665,39 +749,13 @@
         type="button"
         class="wobble btn btn-icon btn-quiet border-line"
         style="height: 30px; width: 30px;"
-        title="指定目录新建会话"
-        aria-label="指定目录新建会话"
-        onclick={() => {
-          newWorkspace = ctrl.current?.meta.workspace_dir || '.';
-          showNewBox = !showNewBox;
-        }}
+        title="选择工作区目录"
+        aria-label="选择工作区目录"
+        onclick={() => (workspaceModal = { open: true, mode: 'create' })}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
       </button>
     </div>
-
-    {#if showNewBox}
-      <div
-        class="border-line"
-        style="padding: 8px; border-radius: 8px; background: var(--sunken); display: flex; flex-direction: column; gap: 6px;"
-        in:pop={{ y: -5, blur: 3, duration: 190 }}
-        out:popOut={{ y: -3, duration: 120 }}
-      >
-        <div class="field-col">
-          <span class="field-label">工作区路径</span>
-          <input
-            class="field border-line"
-            style="padding: 5px 8px; font-size: var(--text-sm);"
-            bind:value={newWorkspace}
-            placeholder="."
-            onkeydown={(e) => { if (e.key === 'Enter') void handleCreateSessionWithDir(); }}
-          />
-        </div>
-        <button type="button" class="wobble btn btn-sm btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void handleCreateSessionWithDir()}>
-          创建并进入
-        </button>
-      </div>
-    {/if}
 
     <div class="side-section-label">会话 ({ctrl.sessions.length})</div>
     <div class="session-list">
@@ -712,9 +770,9 @@
         {@const isActive = ctrl.current?.meta.id === s.id}
         <div
           bind:this={sessionEls[s.id]}
-          animate:flip={{ duration: 260, easing: cubicOut }}
-          in:turnIn={{ y: 6, duration: 200 }}
-          out:popOut={{ y: -2, duration: 120 }}
+          animate:flip={{ duration: 240, easing: cubicOut }}
+          in:turnIn={{ y: 5, duration: 190 }}
+          out:popOut={{ y: -2, duration: 115 }}
           class="session-row {isActive ? 'active' : ''} {deletingId === s.id ? 'confirming' : ''}"
         >
           {#if renamingId === s.id}
@@ -798,12 +856,17 @@
     <div class="sidebar-footer">
       {#if dauminiConnected}
         <div class="account-pill border-line">
-          <div class="account-info">
+          <button
+            type="button"
+            class="account-info"
+            title="打开平台中心查看路由与费用"
+            onclick={() => switchTab('platform')}
+          >
             <span class="status-dot" title="daumini 已连接"></span>
             <span class="account-email" title={dauminiProvider?.user_email || 'daumini 已连接'}>
               {dauminiProvider?.user_email || 'daumini 已连接'}
             </span>
-          </div>
+          </button>
           <button
             type="button"
             class="wobble btn btn-icon-sm btn-ghost"
@@ -838,7 +901,7 @@
 
   <main class="main-pane paper">
     {#if ctrl.error}
-      <div style="max-width: 780px; width: 100%; margin: 12px auto 0; padding: 0 24px;">
+      <div style="max-width: 780px; width: 100%; margin: 10px auto 0; padding: 0 20px;">
         <div class="notice notice-error border-line">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
             <span>{ctrl.error}</span>
@@ -860,7 +923,15 @@
         <div class="topbar-left">
           <span class="topbar-title">{ctrl.current?.meta.title || '未选择会话'}</span>
           {#if ctrl.current}
-            <span class="topbar-path" title={ctrl.current.meta.workspace_dir}>{ctrl.current.meta.workspace_dir}</span>
+            <button
+              type="button"
+              class="topbar-path-btn"
+              title={`切换工作区 ${ctrl.current.meta.workspace_dir}`}
+              onclick={() => (workspaceModal = { open: true, mode: 'switch' })}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+              <span>{ctrl.current.meta.workspace_dir}</span>
+            </button>
             {#if ctrl.current.meta.parent_session_id}
               <span class="tag mark">分叉</span>
             {/if}
@@ -947,14 +1018,20 @@
         <div class="feed-inner">
           {#if ctrl.current && (ctrl.current.messages?.length ?? 0) === 0 && !ctrl.activeStreamText && !ctrl.activeStreamThinking && !latestOrphanFailedRun}
             <div class="empty-feed">
-              <span style="font-size: 32px;"><Wordmark live={false} suffix="" /></span>
+              <span style="font-size: 30px;"><Wordmark live={false} suffix="" /></span>
               <div style="font-size: var(--text-lg); margin-top: 2px;" class="scribble">{ctrl.current.meta.title}</div>
-              <div style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-3); margin-top: 8px;">
-                {ctrl.current.meta.provider_id} / {ctrl.current.meta.model_id}
-              </div>
+              <button
+                type="button"
+                class="empty-ws-pill"
+                onclick={() => (workspaceModal = { open: true, mode: 'switch' })}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                <span>{ctrl.current.meta.workspace_dir}</span>
+                <span class="empty-ws-act">切换目录</span>
+              </button>
 
               {#if !currentProviderReady}
-                <div style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                <div style="margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
                   <span style="font-size: var(--text-base); color: var(--fg-2);">当前渠道尚未配置密钥</span>
                   <div style="display: flex; gap: 10px;">
                     <button type="button" class="wobble btn btn-primary hatch-blue hatch-label border-line-strong" onclick={() => void triggerOneClickOAuth()}>
@@ -1043,6 +1120,7 @@
                         <div class="md-prose">{@html renderMarkdown(b.text)}</div>
                       {:else if b.type === 'tool_use'}
                         {@const res = b.id ? toolResultsMap[b.id] : undefined}
+                        {@const fp = toolFilePath(b.name, b.input)}
                         <Collapsible
                           variant="tool"
                           title={b.name || 'tool'}
@@ -1052,7 +1130,21 @@
                           streaming={!res}
                         >
                           <div class="col-body-tool">
-                            <div class="col-sec-label">参数</div>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                              <div class="col-sec-label">参数</div>
+                              {#if fp}
+                                <button
+                                  type="button"
+                                  class="usage-link-btn"
+                                  onclick={() => {
+                                    showInspector = true;
+                                    void ctrl.readFile(fp);
+                                  }}
+                                >
+                                  在工作区预览 {fp}
+                                </button>
+                              {/if}
+                            </div>
                             <pre class="code-surface">{fmtJSON(b.input)}</pre>
                             {#if res}
                               <div class="col-sec-label">{res.is_error ? '错误输出' : '返回结果'}</div>
@@ -1069,20 +1161,19 @@
                           <span>输入 {fmtNum(totalIn(msg.usage))}</span>
                           <span>输出 {fmtNum(msg.usage.output_tokens)}</span>
                           {#if msg.usage.total_cost_nusd}
-                            <span class="usage-cost">{fmtCost(msg.usage.total_cost_nusd)}</span>
+                            <span class="usage-cost">{ctrl.formatNUSD(msg.usage.total_cost_nusd, 4)}</span>
                           {/if}
                           {#if msg.usage.latency_ms}
                             <span>{(msg.usage.latency_ms / 1000).toFixed(1)}s</span>
                           {/if}
                           {#if msg.provider_id === 'daumini' && msg.usage.generation_id && msg.usage.generation_id.startsWith('gen_')}
-                            <a
-                              class="usage-link"
-                              href={`${dauminiBase}/console/generations?selected=${encodeURIComponent(msg.usage.generation_id)}`}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              class="usage-link-btn"
+                              onclick={() => (inspectGenerationId = msg.usage?.generation_id || null)}
                             >
-                              查看费用与路由
-                            </a>
+                              路由与费用
+                            </button>
                           {/if}
                         {/if}
                         {#if plainText}
@@ -1194,6 +1285,19 @@
 
       <div class="composer-area">
         <div class="composer-wrap">
+          {#if userScrolledUp}
+            <button
+              type="button"
+              class="scroll-bottom-btn border-line"
+              in:pop={{ y: 6, duration: 170 }}
+              out:popOut={{ y: 4, duration: 110 }}
+              onclick={scrollToBottom}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <span>回到底部</span>
+            </button>
+          {/if}
+
           {#if slashMatches.length > 0}
             <div
               class="slash-menu"
@@ -1215,6 +1319,27 @@
                 </button>
               {/each}
             </div>
+          {:else if mentionMatches.length > 0}
+            <div
+              class="slash-menu"
+              role="listbox"
+              aria-label="引用工作区文件"
+              in:pop={{ y: 6, start: 0.96, blur: 4, duration: 170 }}
+              out:popOut={{ y: 4, end: 0.97, blur: 2, duration: 105 }}
+            >
+              {#each mentionMatches as fp, idx (fp)}
+                <button
+                  type="button"
+                  class="slash-item"
+                  class:focused={idx === mentionIndex}
+                  onmouseenter={() => (mentionIndex = idx)}
+                  onclick={() => applyMention(fp)}
+                >
+                  <code class="slash-cmd">{fp}</code>
+                  <span class="slash-desc">引用文件</span>
+                </button>
+              {/each}
+            </div>
           {/if}
 
           <div class="composer-box border-line-strong">
@@ -1225,8 +1350,12 @@
               bind:this={composerEl}
               class="composer-input"
               bind:value={promptText}
-              placeholder={currentProviderReady ? '输入任务或指令，键入 / 查看快捷命令' : '输入任务或指令（先一键登录 daumini 或配置密钥）'}
-              oninput={() => (slashIndex = 0)}
+              placeholder={currentProviderReady ? '输入任务 键入 @ 引用文件 或 / 执行快捷命令' : '输入任务（先一键登录 daumini 或配置渠道密钥）'}
+              oninput={() => {
+                slashIndex = 0;
+                mentionIndex = 0;
+                historyCursor = -1;
+              }}
               onkeydown={(e) => {
                 if (slashMatches.length > 0) {
                   if (e.key === 'ArrowDown') {
@@ -1250,6 +1379,35 @@
                     return;
                   }
                 }
+                if (mentionMatches.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    mentionIndex = (mentionIndex + 1) % mentionMatches.length;
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    mentionIndex = (mentionIndex - 1 + mentionMatches.length) % mentionMatches.length;
+                    return;
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    applyMention(mentionMatches[mentionIndex] ?? mentionMatches[0]);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    promptText = promptText.replace(/(^|\s)@([^\s@]*)$/, '$1');
+                    return;
+                  }
+                }
+                if (e.key === 'ArrowUp' && promptText === '' && promptHistory.length > 0) {
+                  e.preventDefault();
+                  const nextIdx = historyCursor < 0 ? promptHistory.length - 1 : Math.max(0, historyCursor - 1);
+                  historyCursor = nextIdx;
+                  promptText = promptHistory[nextIdx];
+                  return;
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   void handleSend('queue');
@@ -1263,13 +1421,20 @@
                   <span>输入 {fmtNum(totalIn(ctrl.current.meta.total_usage))}</span>
                   <span>输出 {fmtNum(ctrl.current.meta.total_usage.output_tokens)}</span>
                   {#if ctrl.current.meta.total_usage.total_cost_nusd}
-                    <span>{fmtCost(ctrl.current.meta.total_usage.total_cost_nusd)}</span>
+                    <button
+                      type="button"
+                      class="usage-link-btn"
+                      title="查看平台账单与路由"
+                      onclick={() => switchTab('platform')}
+                    >
+                      {ctrl.formatNUSD(ctrl.current.meta.total_usage.total_cost_nusd, 4)}
+                    </button>
                   {/if}
                 {/if}
               </div>
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="kbd">@</span>
                 <span class="kbd">/</span>
-                <span class="kbd">Enter</span>
                 {#if isRunning}
                   <button type="button" class="wobble btn btn-sm btn-quiet border-line" onclick={() => void handleSend('steer')}>插队</button>
                   <button type="button" class="wobble btn btn-sm btn-danger hatch-red hatch-label border-line-strong" onclick={() => void ctrl.cancelRun()}>
@@ -1287,6 +1452,16 @@
           </div>
         </div>
       </div>
+
+    {:else if tab === 'platform'}
+      <PlatformView
+        {ctrl}
+        onInspectGeneration={(id) => (inspectGenerationId = id)}
+        onSelectModel={(mid) => void handlePlatformSelectModel(mid)}
+        onSetDefaultModel={(mid) => void handlePlatformSetDefaultModel(mid)}
+        onOpenLogin={() => openLoginModal('oauth')}
+        onTriggerOAuth={() => void triggerOneClickOAuth()}
+      />
 
     {:else if tab === 'providers'}
       <div class="page-scroll">
@@ -1462,13 +1637,16 @@
   {#if tab === 'work' && showInspector && ctrl.current}
     <aside
       class="inspector"
-      in:fly={{ x: 24, duration: 260, easing: cubicOut }}
-      out:fly={{ x: 20, duration: 180, easing: cubicIn }}
+      in:drawerIn={{ x: 24 }}
+      out:drawerOut={{ x: 18 }}
     >
       <div class="inspector-section">
         <div class="inspector-head">
           <span>缓存与用量</span>
-          <span class="tnum marked" style="font-size: var(--text-base); color: var(--fg);">{cachePct(ctrl.current.meta.total_usage)}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button type="button" class="usage-link-btn" onclick={() => switchTab('platform')}>账单</button>
+            <span class="tnum marked" style="font-size: var(--text-sm);">{cachePct(ctrl.current.meta.total_usage)}</span>
+          </div>
         </div>
         <div class="cache-meter" aria-label="缓存命中率进度条">
           <span class="cache-meter-fill" style:width={`${cacheRatio(ctrl.current.meta.total_usage)}%`}></span>
@@ -1488,7 +1666,7 @@
           </div>
           <div class="stat-cell">
             <span class="stat-label">累计费用</span>
-            <span class="stat-val">{ctrl.current.meta.total_usage.total_cost_nusd ? fmtCost(ctrl.current.meta.total_usage.total_cost_nusd) : '$0.0000'}</span>
+            <span class="stat-val">{ctrl.formatNUSD(ctrl.current.meta.total_usage.total_cost_nusd, 4)}</span>
           </div>
         </div>
         {#if activeModelInfo}
@@ -1502,12 +1680,12 @@
                 <span class="tag ok">支持思考</span>
               {/if}
               {#if activeModelInfo.cache_read_nusd_per_million}
-                <span class="tag mark">缓存 {fmtPriceM(activeModelInfo.cache_read_nusd_per_million)}/M</span>
+                <span class="tag mark">缓存 {ctrl.formatPricePerM(activeModelInfo.cache_read_nusd_per_million)}/M</span>
               {/if}
             </div>
             {#if activeModelInfo.input_nusd_per_million}
               <div class="model-meta-price">
-                输入 {fmtPriceM(activeModelInfo.input_nusd_per_million)} · 输出 {fmtPriceM(activeModelInfo.output_nusd_per_million)} / M
+                输入 {ctrl.formatPricePerM(activeModelInfo.input_nusd_per_million)} · 输出 {ctrl.formatPricePerM(activeModelInfo.output_nusd_per_million)} / M
               </div>
             {/if}
           </div>
@@ -1517,15 +1695,26 @@
       <div class="inspector-section-grow">
         <div class="inspector-head">
           <span>工作区文件 ({filteredFiles.length})</span>
-          <button
-            type="button"
-            class="wobble btn btn-icon-sm btn-ghost"
-            title="刷新文件列表"
-            aria-label="刷新文件列表"
-            onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-          </button>
+          <div style="display: flex; align-items: center; gap: 2px;">
+            <button
+              type="button"
+              class="wobble btn btn-icon-sm btn-ghost"
+              title="切换工作区目录"
+              aria-label="切换工作区目录"
+              onclick={() => (workspaceModal = { open: true, mode: 'switch' })}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+            </button>
+            <button
+              type="button"
+              class="wobble btn btn-icon-sm btn-ghost"
+              title="刷新文件列表"
+              aria-label="刷新文件列表"
+              onclick={() => ctrl.current && void ctrl.loadWorkspaceFiles(ctrl.current.meta.id)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            </button>
+          </div>
         </div>
 
         <input
@@ -1587,11 +1776,31 @@
   {/if}
 </div>
 
+{#if workspaceModal.open}
+  <WorkspacePickerModal
+    {ctrl}
+    initialPath={ctrl.current?.meta.workspace_dir || ''}
+    mode={workspaceModal.mode}
+    onClose={() => (workspaceModal = { ...workspaceModal, open: false })}
+    onConfirm={handleWorkspaceConfirm}
+  />
+{/if}
+
+{#if inspectGenerationId}
+  <GenerationInspectorModal
+    {ctrl}
+    generationId={inspectGenerationId}
+    onClose={() => (inspectGenerationId = null)}
+    onCopy={(txt, label) => void copyText(txt, label)}
+  />
+{/if}
+
 {#if showLoginModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
   <div
     class="modal-backdrop"
     role="presentation"
-    transition:fade={{ duration: 180 }}
+    transition:fade={{ duration: 160 }}
     onclick={(e) => { if (e.target === e.currentTarget) showLoginModal = false; }}
   >
     <div
@@ -1627,7 +1836,7 @@
       {#if loginMode === 'oauth'}
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="font-size: var(--text-sm); color: var(--fg-2); line-height: 1.65;">
-            跳转至 <span class="marked">{dmBase}</span> 确认授权，复用浏览器已有登录态并自动签发专属密钥
+            跳转至 <span class="marked">{dmBase}</span> 确认授权 复用浏览器已有登录态并自动签发专属密钥
           </div>
           {#if dmShowBase}
             <div class="field-col">
@@ -1699,7 +1908,7 @@
           onsubmit={(e) => { e.preventDefault(); void doDauminiKeySave(); }}
         >
           <div style="font-size: var(--text-sm); color: var(--fg-2); line-height: 1.65;">
-            前往 <a href="{dmBase}/console/keys" target="_blank" rel="noreferrer">{dmBase}/console/keys</a> 复制推理密钥粘贴即可
+            粘贴 daumini 推理密钥直接接入
           </div>
           <div class="field-col">
             <span class="field-label">API 密钥</span>

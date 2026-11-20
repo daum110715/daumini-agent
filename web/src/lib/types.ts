@@ -1,4 +1,6 @@
 export type ApprovalMode = 'ask' | 'auto_read' | 'yolo';
+export type UIStyle = 'atelier' | 'sketch';
+export type ColorTheme = 'light' | 'dark';
 
 export interface Block {
   type: 'text' | 'thinking' | 'tool_use' | 'tool_result' | 'system_notice' | 'subagent_trace';
@@ -162,8 +164,10 @@ export interface AgentConfig {
   default_model: string;
   approval_mode: ApprovalMode;
   max_turns: number;
-  theme: 'auto' | 'light' | 'dark';
+  theme: string;
+  ui_style?: UIStyle;
   web_addr: string;
+  recent_workspaces?: string[];
   providers: ProviderConfig[];
   mcp_servers?: MCPServerConfig[];
   hooks?: HookConfig[];
@@ -175,8 +179,8 @@ export interface MCPServerStatus {
   name: string;
   transport: string;
   connected: boolean;
+  tools: string[];
   error?: string;
-  tools?: { name: string; description: string }[];
 }
 
 export interface SkillInfo {
@@ -190,5 +194,127 @@ export interface LogEntry {
   ts: string;
   level: string;
   component: string;
+  session_id?: string;
+  run_id?: string;
   msg: string;
+}
+
+export interface FSBreadcrumb {
+  name: string;
+  path: string;
+}
+
+export interface FSDirEntry {
+  name: string;
+  path: string;
+  is_git?: boolean;
+  modified_at?: string;
+}
+
+export interface FSQuickLink {
+  label: string;
+  path: string;
+  kind: string;
+}
+
+export interface FSBrowseResponse {
+  current: string;
+  parent: string;
+  breadcrumbs: FSBreadcrumb[];
+  drives: string[];
+  quick: FSQuickLink[];
+  dirs: FSDirEntry[];
+  os: string;
+}
+
+export interface DauminiStatus {
+  connected: boolean;
+  base_url: string;
+  user_email?: string;
+  key?: {
+    id?: string;
+    workspace_id?: string;
+    scopes?: string[];
+    allowed_models?: string[];
+  };
+  key_error?: string;
+  currencies?: {
+    data?: Array<{ code: string; symbol?: string; rate_per_usd?: number; rate?: number }>;
+  };
+}
+
+export interface DauminiAttempt {
+  id: string;
+  sequence: number;
+  endpoint_id: string;
+  state: string;
+  http_status: number;
+  error_class?: string;
+  cost_nusd?: number;
+  response_committed?: boolean;
+}
+
+export interface DauminiGeneration {
+  id: string;
+  request_id?: string;
+  workspace_id?: string;
+  api_key_id?: string;
+  requested_model?: string;
+  resolved_model?: string;
+  provider_id?: string;
+  state?: string;
+  outcome?: string;
+  settlement_state?: string;
+  reserved_nusd?: number;
+  charged_nusd?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  reasoning_tokens?: number;
+  usage_quality?: string;
+  streamed?: boolean;
+  finish_reason?: string;
+  latency_ms?: number;
+  error_code?: string;
+  created_at?: string;
+  cache_usage?: {
+    cache_read_tokens?: number;
+    cache_write_tokens?: number;
+  };
+  attempts?: DauminiAttempt[];
+}
+
+export interface DauminiGenerationResponse {
+  generation: DauminiGeneration;
+  reconciliation?: Record<string, unknown> | null;
+  currencies?: DauminiStatus['currencies'];
+  base_url?: string;
+}
+
+export interface DauminiLedgerEntry {
+  session_id: string;
+  session_title: string;
+  message_id: string;
+  provider_id: string;
+  model_id: string;
+  generation_id?: string;
+  request_id?: string;
+  usage: Usage;
+  created_at: string;
+}
+
+export interface DauminiLedgerModelSummary {
+  model_id: string;
+  provider_id: string;
+  request_count: number;
+  usage: Usage;
+  cache_hit_ratio: number;
+}
+
+export interface DauminiUsageLedger {
+  totals: Usage;
+  request_count: number;
+  session_count: number;
+  cache_hit_ratio: number;
+  by_model: DauminiLedgerModelSummary[];
+  recent: DauminiLedgerEntry[];
 }

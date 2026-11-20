@@ -82,18 +82,20 @@ type PluginExecConfig struct {
 }
 
 type Config struct {
-	Version         int                `json:"version"`
-	DefaultProvider string             `json:"default_provider"`
-	DefaultModel    string             `json:"default_model"`
-	ApprovalMode    types.ApprovalMode `json:"approval_mode"`
-	MaxTurns        int                `json:"max_turns"`
-	Theme           string             `json:"theme"` // auto | light | dark
-	WebAddr         string             `json:"web_addr"`
-	Providers       []ProviderConfig   `json:"providers"`
-	MCPServers      []MCPServerConfig  `json:"mcp_servers,omitempty"`
-	Hooks           []HookConfig       `json:"hooks,omitempty"`
-	Plugins         []PluginExecConfig `json:"plugins,omitempty"`
-	SystemExtra     string             `json:"system_extra,omitempty"`
+	Version          int                `json:"version"`
+	DefaultProvider  string             `json:"default_provider"`
+	DefaultModel     string             `json:"default_model"`
+	ApprovalMode     types.ApprovalMode `json:"approval_mode"`
+	MaxTurns         int                `json:"max_turns"`
+	Theme            string             `json:"theme"`    // auto | light | dark
+	UIStyle          string             `json:"ui_style"` // atelier | sketch
+	WebAddr          string             `json:"web_addr"`
+	RecentWorkspaces []string           `json:"recent_workspaces,omitempty"`
+	Providers        []ProviderConfig   `json:"providers"`
+	MCPServers       []MCPServerConfig  `json:"mcp_servers,omitempty"`
+	Hooks            []HookConfig       `json:"hooks,omitempty"`
+	Plugins          []PluginExecConfig `json:"plugins,omitempty"`
+	SystemExtra      string             `json:"system_extra,omitempty"`
 }
 
 func DefaultDataDir() string {
@@ -110,11 +112,12 @@ func DefaultDataDir() string {
 func DefaultConfig() Config {
 	return Config{
 		Version:         1,
-		DefaultProvider: "deepseek",
-		DefaultModel:    "deepseek-chat",
+		DefaultProvider: "daumini",
+		DefaultModel:    "deepseek/deepseek-v4.1flash",
 		ApprovalMode:    types.ApprovalAutoRead,
 		MaxTurns:        40,
 		Theme:           "auto",
+		UIStyle:         "atelier",
 		WebAddr:         "127.0.0.1:3847",
 		Providers: []ProviderConfig{
 			{
@@ -250,6 +253,9 @@ func (m *Manager) Load() error {
 	if cfg.Theme == "" {
 		cfg.Theme = "auto"
 	}
+	if cfg.UIStyle == "" {
+		cfg.UIStyle = "atelier"
+	}
 	if cfg.WebAddr == "" {
 		cfg.WebAddr = "127.0.0.1:3847"
 	}
@@ -278,6 +284,32 @@ func (m *Manager) Update(fn func(*Config) error) (Config, error) {
 	}
 	m.cfg = next
 	return cloneConfig(next), nil
+}
+
+func (m *Manager) AddRecentWorkspace(dir string) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err == nil {
+		dir = abs
+	}
+	_, _ = m.Update(func(c *Config) error {
+		next := make([]string, 0, len(c.RecentWorkspaces)+1)
+		next = append(next, dir)
+		for _, w := range c.RecentWorkspaces {
+			if w == "" || strings.EqualFold(w, dir) {
+				continue
+			}
+			next = append(next, w)
+			if len(next) >= 12 {
+				break
+			}
+		}
+		c.RecentWorkspaces = next
+		return nil
+	})
 }
 
 func (m *Manager) FindProvider(id string) (ProviderConfig, bool) {
