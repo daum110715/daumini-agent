@@ -6,26 +6,20 @@ function prefersReduced(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
-// Atelier fluid silk curve: fast luminous launch, long velvety magnetic settle.
-function silkOut(t: number): number {
-  return 1 - Math.pow(1 - t, 4.2);
+// Critically-damped exponential deceleration for the Atelier theme (silky glide, zero overshoot jitter).
+function expoOut(t: number): number {
+  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
 }
 
-// Atelier aperture retract: crisp, light, zero heaviness.
-function silkIn(t: number): number {
-  return Math.pow(t, 2.2);
+function quadIn(t: number): number {
+  return t * t;
 }
 
-// Sketch theme deceleration (paper & ink bounce).
+// Slightly springy deceleration for the Sketch theme.
 function sketchOut(t: number): number {
   return cubicOut(t);
 }
 
-/**
- * Floating popovers, menus, inline banners, toasts.
- * - atelier: directional optical curtain reveal (clip-path aperture + subtle silk drift, zero blur/bounce)
- * - sketch:  paper pop (scale + translateY + gaussian blur)
- */
 export function pop(
   _node: Element,
   params: { y?: number; start?: number; blur?: number; duration?: number } = {}
@@ -34,19 +28,15 @@ export function pop(
   const style = getActiveStyle();
 
   if (style === 'atelier') {
-    const upward = (params.y ?? -6) > 0;
-    const duration = params.duration ? Math.min(260, Math.round(params.duration * 1.15)) : 230;
+    const dyMax = params.y !== undefined ? Math.sign(params.y) * Math.min(Math.abs(params.y), 5) : -4;
+    const duration = params.duration ? Math.round(params.duration * 0.92) : 190;
     return {
       duration,
-      easing: silkOut,
+      easing: expoOut,
       css: (t, u) => {
-        const clip = (u * 100).toFixed(2);
-        const clipPath = upward
-          ? `inset(${clip}% 0 0 0 round 12px)`
-          : `inset(0 0 ${clip}% 0 round 12px)`;
-        const dy = (upward ? 7 : -7) * u;
-        const opacity = Math.min(1, t * 1.6);
-        return `opacity: ${opacity.toFixed(3)}; clip-path: ${clipPath}; transform: translate3d(0, ${dy.toFixed(2)}px, 0);`;
+        const s = 0.984 + 0.016 * t;
+        const dy = dyMax * u;
+        return `opacity: ${Math.min(1, t * 1.25).toFixed(3)}; transform: translate3d(0, ${dy.toFixed(2)}px, 0) scale(${s.toFixed(4)});`;
       }
     };
   }
@@ -72,17 +62,13 @@ export function popOut(
   const style = getActiveStyle();
 
   if (style === 'atelier') {
-    const upward = (params.y ?? -4) > 0;
+    const dyMax = params.y !== undefined ? Math.sign(params.y) * Math.min(Math.abs(params.y), 3) : -2;
     return {
-      duration: 140,
-      easing: silkIn,
+      duration: 115,
+      easing: quadIn,
       css: (t, u) => {
-        const clip = (u * 85).toFixed(2);
-        const clipPath = upward
-          ? `inset(${clip}% 0 0 0 round 12px)`
-          : `inset(0 0 ${clip}% 0 round 12px)`;
-        const dy = (upward ? 5 : -5) * u;
-        return `opacity: ${t.toFixed(3)}; clip-path: ${clipPath}; transform: translate3d(0, ${dy.toFixed(2)}px, 0);`;
+        const s = 0.988 + 0.012 * t;
+        return `opacity: ${t.toFixed(3)}; transform: translate3d(0, ${(dyMax * u).toFixed(2)}px, 0) scale(${s.toFixed(4)});`;
       }
     };
   }
@@ -100,26 +86,18 @@ export function popOut(
   };
 }
 
-/**
- * Modal dialogs.
- * - atelier: 3D architectural perspective unfold + lower-edge optical aperture reveal
- * - sketch:  springy scale + blur fade-in
- */
 export function dialogIn(_node: Element): TransitionConfig {
   if (prefersReduced()) return { duration: 0 };
   const style = getActiveStyle();
 
   if (style === 'atelier') {
     return {
-      duration: 320,
-      easing: silkOut,
+      duration: 240,
+      easing: expoOut,
       css: (t, u) => {
-        const rotX = (4.2 * u).toFixed(2);
-        const dy = (22 * u).toFixed(2);
-        const dz = (-24 * u).toFixed(2);
-        const clipBottom = (16 * u).toFixed(2);
-        const opacity = Math.min(1, t * 1.75);
-        return `opacity: ${opacity.toFixed(3)}; clip-path: inset(0 0 ${clipBottom}% 0 round 20px); transform: perspective(1000px) translate3d(0, ${dy}px, ${dz}px) rotateX(${rotX}deg); transform-origin: 50% 18%;`;
+        const s = 0.976 + 0.024 * t;
+        const dy = 12 * u;
+        return `opacity: ${Math.min(1, t * 1.3).toFixed(3)}; transform: translate3d(0, ${dy.toFixed(2)}px, 0) scale(${s.toFixed(4)});`;
       }
     };
   }
@@ -136,11 +114,6 @@ export function dialogIn(_node: Element): TransitionConfig {
   };
 }
 
-/**
- * Side inspector drawer.
- * - atelier: shoji-screen horizontal aperture wipe + gentle parallax glide
- * - sketch:  direct slide-in from right
- */
 export function drawerIn(_node: Element, params: { x?: number } = {}): TransitionConfig {
   if (prefersReduced()) return { duration: 0 };
   const style = getActiveStyle();
@@ -148,14 +121,9 @@ export function drawerIn(_node: Element, params: { x?: number } = {}): Transitio
 
   if (style === 'atelier') {
     return {
-      duration: 310,
-      easing: silkOut,
-      css: (t, u) => {
-        const clipLeft = (u * 100).toFixed(2);
-        const dx = (14 * u).toFixed(2);
-        const opacity = Math.min(1, t * 1.55);
-        return `opacity: ${opacity.toFixed(3)}; clip-path: inset(0 0 0 ${clipLeft}%); transform: translate3d(${dx}px, 0, 0);`;
-      }
+      duration: 260,
+      easing: expoOut,
+      css: (t, u) => `opacity: ${Math.min(1, t * 1.25).toFixed(3)}; transform: translate3d(${(x * u).toFixed(2)}px, 0, 0);`
     };
   }
 
@@ -173,13 +141,9 @@ export function drawerOut(_node: Element, params: { x?: number } = {}): Transiti
 
   if (style === 'atelier') {
     return {
-      duration: 190,
-      easing: silkIn,
-      css: (t, u) => {
-        const clipLeft = (u * 100).toFixed(2);
-        const dx = (10 * u).toFixed(2);
-        return `opacity: ${t.toFixed(3)}; clip-path: inset(0 0 0 ${clipLeft}%); transform: translate3d(${dx}px, 0, 0);`;
-      }
+      duration: 160,
+      easing: quadIn,
+      css: (t, u) => `opacity: ${t.toFixed(3)}; transform: translate3d(${(x * u).toFixed(2)}px, 0, 0);`
     };
   }
 
@@ -190,25 +154,16 @@ export function drawerOut(_node: Element, params: { x?: number } = {}): Transiti
   };
 }
 
-/**
- * Conversation turns & streaming status blocks.
- * - atelier: horizontal-skewed silk unveil with soft clip-path
- * - sketch:  vertical rise fade-in
- */
 export function turnIn(_node: Element, params: { y?: number; duration?: number } = {}): TransitionConfig {
   if (prefersReduced()) return { duration: 0 };
   const style = getActiveStyle();
 
   if (style === 'atelier') {
+    const y = Math.min(params.y ?? 6, 6);
     return {
-      duration: params.duration ? Math.round(params.duration * 1.2) : 250,
-      easing: silkOut,
-      css: (t, u) => {
-        const dx = (-10 * u).toFixed(2);
-        const clipBottom = (22 * u).toFixed(2);
-        const opacity = Math.min(1, t * 1.5);
-        return `opacity: ${opacity.toFixed(3)}; clip-path: inset(0 0 ${clipBottom}% 0 round 10px); transform: translate3d(${dx}px, 0, 0);`;
-      }
+      duration: params.duration ?? 210,
+      easing: expoOut,
+      css: (t, u) => `opacity: ${Math.min(1, t * 1.2).toFixed(3)}; transform: translate3d(0, ${(y * u).toFixed(2)}px, 0);`
     };
   }
 

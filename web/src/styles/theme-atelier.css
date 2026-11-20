@@ -1,111 +1,84 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   Theme Pack: Atelier (晴空工坊 / 星夜深海)
-   - Crisp porcelain & sky-mist daylight + deep midnight-cobalt dark (zero muddy yellow, zero flat dead grey)
-   - True borderless flat tonal elevation with airy luminance & crisp contrast
-   - Completely independent motion language:
-     * Optical aperture reveals (clip-path curtains) & 3D perspective unfold (in motion.ts)
-     * Luminous diagonal sheen sweeps & colored ambient glow on primary actions
-     * Magnetic silk navigation rail with glowing living pill anchor
-     * Dual-tone aurora flow & breathing focus halo on composer
-     * Directional conversation turn entrances (user glides from right, AI unveils from left)
-     * Shimmering cache-hit meter & parallax cross-dissolve view transitions
+   Theme Pack: Atelier (静谧工作台)
+   - Flat tonal layering (no dot grids, no 9-slice ink strokes, no hatching)
+   - Warm alabaster daylight & velvet obsidian dark palettes built for 8h+ work
+   - Completely independent motion system: critically-damped exponential glide,
+     tactile micro-press, gliding accent rail, silk shimmer, calm breathing aura
    ════════════════════════════════════════════════════════════════════════════ */
 
 [data-style="atelier"][data-theme="light"],
 [data-style="atelier"]:root {
   color-scheme: light;
-  --bg: #fafbff;
+  --bg: #f6f5f1;
   --panel: #ffffff;
   --card: #ffffff;
-  --raised: #e8eef8;
-  --sunken: #f1f5fb;
+  --raised: #eceae3;
+  --sunken: #f0eee8;
   --field: #ffffff;
-  --line: rgb(30 58 118 / 0.08);
-  --line-strong: rgb(30 58 118 / 0.16);
-  --fg: #0f172a;
-  --fg-2: #475569;
-  --fg-3: #8292ab;
-
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
+  --line: rgb(31 35 40 / 0.08);
+  --line-strong: rgb(31 35 40 / 0.16);
+  --fg: #1f2328;
+  --fg-2: #525965;
+  --fg-3: #838b96;
+  --accent: #3b5bdb;
+  --accent-hover: #314dc0;
   --accent-fg: #ffffff;
-  --accent-soft: #eef2ff;
-
-  --mark: #0284c7;
+  --accent-soft: #edf2ff;
+  --mark: #d9480f;
   --mark-fg: #ffffff;
-  --mark-soft: #e0f2fe;
-
-  --ok: #0d9488;
-  --ok-soft: #e6f9f6;
-  --warn: #d97706;
+  --mark-soft: #edf2ff;
+  --ok: #2b8a3e;
+  --ok-soft: #ebfbee;
+  --warn: #b45309;
   --warn-soft: #fef3c7;
-  --bad: #e11d48;
-  --bad-soft: #ffe4e8;
-
-  --glass: rgb(250 251 255 / 0.8);
-  --scrim: rgb(15 23 42 / 0.28);
-
-  --shadow-ambient: 0 10px 28px -12px rgb(30 58 138 / 0.13), 0 2px 6px -1px rgb(30 58 138 / 0.05);
-  --shadow-subtle: 0 2px 8px -3px rgb(30 58 138 / 0.09), 0 1px 2px rgb(30 58 138 / 0.04);
-  --shadow-pop: 0 26px 60px -16px rgb(15 23 42 / 0.2), 0 4px 14px -4px rgb(30 58 138 / 0.08);
-  --shadow-accent: 0 10px 24px -8px rgb(79 70 229 / 0.42);
-
-  --atelier-sidebar: #f1f5fb;
-  --atelier-inspector: #f3f6fc;
-  --atelier-user-bg: #ebefff;
-  --atelier-code-bg: #f4f7fc;
+  --bad: #c92a2a;
+  --bad-soft: #feeceb;
+  --glass: rgb(246 245 241 / 0.84);
+  --scrim: rgb(20 22 27 / 0.34);
+  --shadow-pop: 0 16px 40px -10px rgb(15 20 30 / 0.14), 0 2px 6px rgb(15 20 30 / 0.05);
+  --shadow-subtle: 0 1px 2px rgb(15 20 30 / 0.05);
+  --atelier-sidebar: #f0eee8;
+  --atelier-inspector: #f2f0ea;
+  --atelier-user-bg: #e8edfb;
+  --atelier-code-bg: #f3f2ed;
   --atelier-pill-bg: #ffffff;
-  --atelier-glow-1: rgb(99 102 241 / 0.09);
-  --atelier-glow-2: rgb(20 184 166 / 0.08);
-  --atelier-top-sheen: inset 0 1px 0 rgb(255 255 255 / 0.92);
 }
 
 [data-style="atelier"][data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0b1020;
-  --panel: #151e35;
-  --card: #151e35;
-  --raised: #1e2a48;
-  --sunken: #0f1629;
-  --field: #121a30;
-  --line: rgb(165 189 240 / 0.08);
-  --line-strong: rgb(165 189 240 / 0.16);
-  --fg: #f1f5f9;
-  --fg-2: #a5b4cf;
-  --fg-3: #6b7d9e;
-
-  --accent: #7c8cff;
-  --accent-hover: #919eff;
-  --accent-fg: #0b1020;
-  --accent-soft: rgb(124 140 255 / 0.16);
-
-  --mark: #38bdf8;
-  --mark-fg: #0b1020;
-  --mark-soft: rgb(56 189 248 / 0.15);
-
-  --ok: #2dd4bf;
-  --ok-soft: rgb(45 212 191 / 0.14);
-  --warn: #fbbf24;
-  --warn-soft: rgb(251 191 36 / 0.15);
-  --bad: #fb7185;
-  --bad-soft: rgb(251 113 133 / 0.15);
-
-  --glass: rgb(11 16 32 / 0.8);
-  --scrim: rgb(4 8 18 / 0.64);
-
-  --shadow-ambient: 0 14px 34px -12px rgb(0 0 0 / 0.52), inset 0 1px 0 rgb(255 255 255 / 0.055);
-  --shadow-subtle: 0 4px 12px -4px rgb(0 0 0 / 0.36), inset 0 1px 0 rgb(255 255 255 / 0.045);
-  --shadow-pop: 0 28px 68px -14px rgb(0 0 0 / 0.76), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --shadow-accent: 0 12px 28px -8px rgb(124 140 255 / 0.44);
-
-  --atelier-sidebar: #0f1629;
-  --atelier-inspector: #0e1527;
-  --atelier-user-bg: rgb(124 140 255 / 0.16);
-  --atelier-code-bg: #10172a;
-  --atelier-pill-bg: #1b2642;
-  --atelier-glow-1: rgb(124 140 255 / 0.11);
-  --atelier-glow-2: rgb(45 212 191 / 0.08);
-  --atelier-top-sheen: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --bg: #131417;
+  --panel: #1b1e24;
+  --card: #1a1d23;
+  --raised: #242831;
+  --sunken: #16181d;
+  --field: #1a1d23;
+  --line: rgb(255 255 255 / 0.075);
+  --line-strong: rgb(255 255 255 / 0.15);
+  --fg: #e7e9ee;
+  --fg-2: #a3abb8;
+  --fg-3: #6e7685;
+  --accent: #748ffc;
+  --accent-hover: #5c7cfa;
+  --accent-fg: #0e1117;
+  --accent-soft: rgb(116 143 252 / 0.15);
+  --mark: #ff8787;
+  --mark-fg: #131417;
+  --mark-soft: rgb(116 143 252 / 0.16);
+  --ok: #51cf66;
+  --ok-soft: rgb(81 207 102 / 0.13);
+  --warn: #fab005;
+  --warn-soft: rgb(250 176 5 / 0.14);
+  --bad: #ff6b6b;
+  --bad-soft: rgb(255 107 107 / 0.14);
+  --glass: rgb(19 20 23 / 0.82);
+  --scrim: rgb(0 0 0 / 0.62);
+  --shadow-pop: 0 20px 48px -12px rgb(0 0 0 / 0.65), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-subtle: 0 1px 3px rgb(0 0 0 / 0.35);
+  --atelier-sidebar: #17191e;
+  --atelier-inspector: #16181d;
+  --atelier-user-bg: rgb(116 143 252 / 0.16);
+  --atelier-code-bg: #15171c;
+  --atelier-pill-bg: #232730;
 }
 
 [data-style="atelier"] {
@@ -113,39 +86,38 @@
   --font-display: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 
-  --text-xs: 0.75rem;
-  --text-sm: 0.84375rem;
-  --text-base: 0.90625rem;
-  --text-md: 1rem;
-  --text-lg: 1.0625rem;
-  --text-xl: 1.3125rem;
-  --text-2xl: 1.625rem;
+  --text-xs: 0.75rem;     /* 12px crisp sans */
+  --text-sm: 0.84375rem;  /* 13.5px */
+  --text-base: 0.90625rem;/* 14.5px comfortable long-form reading */
+  --text-md: 1rem;        /* 16px */
+  --text-lg: 1.0625rem;   /* 17px */
+  --text-xl: 1.3125rem;   /* 21px */
+  --text-2xl: 1.625rem;   /* 26px */
 
-  /* Atelier independent fluid silk curves */
-  --ease-silk-fluid: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-silk-reveal: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-silk-press: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-out: var(--ease-silk-fluid);
-  --ease-spring: var(--ease-silk-fluid);
+  /* Atelier independent motion curves (critically damped exponential glide) */
+  --ease-atelier: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-atelier-press: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: var(--ease-atelier);
+  --ease-spring: var(--ease-atelier);
 }
 
-/* ── Ambient Luminance Canvas (replaces whiteboard dot grid) ────────────── */
-
+/* Strip whiteboard dots, 9-slice sketch strokes, hatch stripes, and red scribbles */
 [data-style="atelier"] .paper {
   background-color: var(--bg);
-  background-image:
-    radial-gradient(640px 360px at 82% -6%, var(--atelier-glow-1), transparent 70%),
-    radial-gradient(520px 340px at 14% 106%, var(--atelier-glow-2), transparent 72%);
-  background-attachment: fixed;
+  background-image: none;
 }
 
-/* Strip all 9-slice sketch strokes, hatch stripes & scribbles; rely on tonal surfaces */
 [data-style="atelier"] .border-line,
 [data-style="atelier"] .border-line-strong,
 [data-style="atelier"] .sketch {
   border-image: none;
   border-image-source: none;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
+}
+
+[data-style="atelier"] .border-line-strong,
+[data-style="atelier"] .sketch {
+  border-color: var(--line-strong);
 }
 
 [data-style="atelier"] .hatch-blue,
@@ -160,6 +132,7 @@
 [data-style="atelier"] .hatch-label svg {
   filter: none;
 }
+
 [data-style="atelier"] .scribble::after {
   display: none;
 }
@@ -167,172 +140,124 @@
 [data-style="atelier"] .marked {
   background: var(--ok-soft);
   color: var(--ok);
-  padding: 1px 7px;
-  border-radius: 6px;
+  padding: 1px 6px;
+  border-radius: 5px;
   font-weight: 500;
 }
 
-[data-style="atelier"] ::selection {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-}
+/* ── Atelier Independent Motion System ───────────────────────────────────── */
 
-[data-style="atelier"] :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
-  outline-offset: 2px;
-}
-
-/* ── Independent Button & Sheen Sweep Motion ────────────────────────────── */
-
-[data-style="atelier"] .wobble,
-[data-style="atelier"] .wobble-subtle {
-  position: relative;
+/* Replace playful wobble rotation with architectural micro-lift & tactile compression */
+[data-style="atelier"] .wobble {
   transition:
-    transform 240ms var(--ease-silk-fluid),
-    background-color 200ms var(--ease-silk-fluid),
-    color 180ms var(--ease-silk-fluid),
-    box-shadow 260ms var(--ease-silk-fluid);
+    transform 180ms var(--ease-atelier),
+    background-color 160ms var(--ease-atelier),
+    color 160ms var(--ease-atelier),
+    border-color 160ms var(--ease-atelier),
+    box-shadow 200ms var(--ease-atelier);
 }
-[data-style="atelier"] .wobble:hover,
-[data-style="atelier"] .wobble-subtle:hover {
-  transform: translate3d(0, -1px, 0);
+[data-style="atelier"] .wobble:hover {
+  transform: translateY(-0.5px);
 }
-[data-style="atelier"] .wobble:active,
-[data-style="atelier"] .wobble-subtle:active {
-  transform: scale(0.968);
-  transition-duration: 90ms;
-  transition-timing-function: var(--ease-silk-press);
+[data-style="atelier"] .wobble:active {
+  transform: scale(0.978);
+  transition-duration: 75ms;
+  transition-timing-function: var(--ease-atelier-press);
 }
 
 [data-style="atelier"] .btn {
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 500;
-  letter-spacing: -0.006em;
-  overflow: hidden;
+  letter-spacing: -0.005em;
 }
-
-/* Primary action: crisp indigo-violet gradient + diagonal silk sheen sweep on hover */
 [data-style="atelier"] .btn-primary {
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 78%, #818cf8));
+  background: var(--accent);
   color: var(--accent-fg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), inset 0 1px 0 rgb(255 255 255 / 0.24);
-}
-[data-style="atelier"] .btn-primary::after {
-  content: "";
-  position: absolute;
-  inset: -40% -20%;
-  background: linear-gradient(108deg, transparent 34%, rgb(255 255 255 / 0.34) 50%, transparent 66%);
-  transform: translateX(-125%) skewX(-16deg);
-  transition: transform 540ms var(--ease-silk-fluid);
-  pointer-events: none;
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1), inset 0 1px 0 rgb(255 255 255 / 0.14);
 }
 [data-style="atelier"] .btn-primary:hover {
-  background: linear-gradient(135deg, var(--accent-hover), var(--accent));
-  box-shadow: var(--shadow-accent), inset 0 1px 0 rgb(255 255 255 / 0.28);
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--accent) 42%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.18);
 }
-[data-style="atelier"] .btn-primary:hover::after {
-  transform: translateX(125%) skewX(-16deg);
-}
-[data-style="atelier"] .btn-primary:active {
-  box-shadow: 0 3px 10px -4px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
 [data-style="atelier"] .btn-accent {
   background: var(--warn-soft);
   color: var(--warn);
-  border: 0;
+  border-color: color-mix(in srgb, var(--warn) 24%, transparent);
 }
 [data-style="atelier"] .btn-accent:hover {
-  background: color-mix(in srgb, var(--warn-soft) 72%, var(--warn));
+  background: color-mix(in srgb, var(--warn-soft) 75%, var(--warn));
 }
-
 [data-style="atelier"] .btn-danger {
   background: var(--bad);
   color: #ffffff;
-  border: 0;
-  box-shadow: var(--shadow-subtle);
+  border-color: transparent;
 }
 [data-style="atelier"] .btn-danger:hover {
-  background: color-mix(in srgb, var(--bad) 86%, #000);
-  box-shadow: 0 10px 22px -8px color-mix(in srgb, var(--bad) 50%, transparent);
+  background: color-mix(in srgb, var(--bad) 88%, #000);
+  box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--bad) 40%, transparent);
 }
-
 [data-style="atelier"] .btn-quiet {
   background: var(--panel);
   color: var(--fg-2);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
 }
 [data-style="atelier"] .btn-quiet:hover {
   background: var(--raised);
   color: var(--fg);
-  box-shadow: var(--shadow-ambient);
+  border-color: var(--line-strong);
 }
-
 [data-style="atelier"] .btn-ghost {
   color: var(--fg-2);
 }
 [data-style="atelier"] .btn-ghost:hover {
-  background: color-mix(in srgb, var(--raised) 82%, transparent);
+  background: var(--raised);
   color: var(--fg);
 }
 
-/* ── Borderless Tonal Shell & Magnetic Silk Navigation ──────────────────── */
-
+/* Shell & flat tonal panel architecture */
 [data-style="atelier"] .sidebar {
-  background: linear-gradient(180deg, var(--atelier-sidebar) 0%, color-mix(in srgb, var(--atelier-sidebar) 88%, var(--bg)) 100%);
-  border: 0;
+  background: var(--atelier-sidebar);
   border-image: none;
-  padding: 14px 12px 12px;
+  border-right: 1px solid var(--line);
+  padding: 12px 10px 10px;
 }
 
 [data-style="atelier"] .sidebar-footer {
-  border: 0;
   border-image: none;
-  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
 }
 
-/* Living silk pill marker — no box outline, luminous floating capsule + breathing dot */
+/* Precision gliding accent rail for sidebar nav & active session */
 [data-style="atelier"] .side-nav-marker {
   background: var(--atelier-pill-bg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 8px;
 }
 [data-style="atelier"] .side-nav-marker::before {
   content: "";
   position: absolute;
-  left: 4px;
-  top: 50%;
-  width: 4px;
-  height: 14px;
-  transform: translateY(-50%);
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
   border-radius: 99px;
-  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--ok)));
-  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+  background: var(--accent);
 }
 [data-style="atelier"] .side-nav-marker.glide {
-  transition:
-    translate 360ms var(--ease-silk-fluid),
-    height 340ms var(--ease-silk-fluid),
-    opacity 200ms var(--ease-silk-fluid);
+  transition: translate 280ms var(--ease-atelier), height 280ms var(--ease-atelier), opacity 180ms;
 }
 [data-style="atelier"] .side-nav-btn {
-  padding: 0 13px;
+  padding: 0 11px;
   font-weight: 500;
-  border-radius: 10px;
-  transition: color 180ms var(--ease-silk-fluid), transform 220ms var(--ease-silk-fluid);
-}
-[data-style="atelier"] .side-nav-btn:hover:not(.active) {
-  transform: translateX(3px);
-  color: var(--fg);
-}
-[data-style="atelier"] .side-nav-btn svg {
-  transition: transform 240ms var(--ease-silk-fluid), color 200ms var(--ease-silk-fluid);
+  transition: color 160ms var(--ease-atelier);
 }
 [data-style="atelier"] .side-nav-btn:hover svg {
+  transform: translateX(1px);
   color: var(--accent);
-  transform: scale(1.08);
 }
 [data-style="atelier"] .side-nav-btn.active {
   color: var(--fg);
@@ -343,61 +268,45 @@
 
 [data-style="atelier"] .new-session-btn {
   background: var(--atelier-pill-bg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
   color: var(--fg);
   font-weight: 500;
-  border-radius: 10px;
-}
-[data-style="atelier"] .new-session-btn svg {
-  transition: transform 320ms var(--ease-silk-fluid), color 200ms;
 }
 [data-style="atelier"] .new-session-btn:hover {
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--accent) 36%, transparent);
-}
-[data-style="atelier"] .new-session-btn:hover svg {
-  transform: rotate(90deg);
-  color: var(--accent);
+  border-color: var(--line-strong);
+  background: var(--panel);
 }
 
 [data-style="atelier"] .session-marker {
   background: var(--atelier-pill-bg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 8px;
 }
 [data-style="atelier"] .session-marker::before {
   content: "";
   position: absolute;
-  left: 4px;
-  top: 50%;
-  width: 3.5px;
-  height: 16px;
-  transform: translateY(-50%);
-  border-radius: 99px;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2.5px;
+  border-radius: 0 99px 99px 0;
   background: var(--accent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 [data-style="atelier"] .session-marker.glide {
-  transition:
-    translate 340ms var(--ease-silk-fluid),
-    height 320ms var(--ease-silk-fluid),
-    opacity 200ms var(--ease-silk-fluid);
+  transition: translate 270ms var(--ease-atelier), height 270ms var(--ease-atelier), opacity 180ms;
 }
 [data-style="atelier"] .session-row {
-  border-radius: 10px;
-  transition: background-color 180ms var(--ease-silk-fluid), padding-left 220ms var(--ease-silk-fluid);
+  border-radius: 8px;
 }
 [data-style="atelier"] .session-row:hover:not(.active) {
-  background: color-mix(in srgb, var(--raised) 68%, transparent);
+  background: color-mix(in srgb, var(--raised) 72%, transparent);
 }
 [data-style="atelier"] .session-actions {
-  transform: translateX(6px);
-  transition: opacity 160ms var(--ease-silk-fluid), transform 220ms var(--ease-silk-fluid);
-  background: color-mix(in srgb, var(--atelier-sidebar) 88%, transparent);
-  border-radius: 8px;
+  transform: translateX(4px);
+  transition: opacity 150ms var(--ease-atelier), transform 180ms var(--ease-atelier);
+  background: color-mix(in srgb, var(--atelier-sidebar) 90%, transparent);
 }
 [data-style="atelier"] .session-row.active .session-actions {
   background: color-mix(in srgb, var(--atelier-pill-bg) 92%, transparent);
@@ -410,101 +319,64 @@
 
 [data-style="atelier"] .account-pill {
   background: var(--atelier-pill-bg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  border-radius: 11px;
-}
-[data-style="atelier"] .account-pill:hover {
-  box-shadow: var(--shadow-ambient);
+  border: 1px solid var(--line);
+  border-radius: 9px;
 }
 
-/* ── Topbar (glass veil, zero hard bottom line) ─────────────────────────── */
-
+/* Topbar */
 [data-style="atelier"] .topbar {
-  border: 0;
   border-image: none;
-  min-height: 48px;
-  padding: 7px 18px;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-  backdrop-filter: blur(14px) saturate(1.15);
+  border-bottom: 1px solid var(--line);
+  min-height: 46px;
+  padding: 6px 16px;
 }
 [data-style="atelier"] .topbar-title {
   font-weight: 600;
-  letter-spacing: -0.014em;
+  letter-spacing: -0.01em;
 }
 [data-style="atelier"] .todo-strip {
-  border: 0;
   border-image: none;
-  background: color-mix(in srgb, var(--sunken) 78%, transparent);
+  border-bottom: 1px solid var(--line);
 }
 
-/* ── Directional Conversation Feed ──────────────────────────────────────── */
-
+/* Conversation Feed — calm editorial rhythm */
 [data-style="atelier"] .turn-user {
-  animation: atelier-user-enter 280ms var(--ease-silk-fluid) both;
+  animation: atelier-turn-in 210ms var(--ease-atelier) both;
 }
 [data-style="atelier"] .turn-assistant {
-  animation: atelier-ai-enter 320ms var(--ease-silk-fluid) both;
+  animation: atelier-turn-in 230ms var(--ease-atelier) both;
 }
-@keyframes atelier-user-enter {
-  from {
-    opacity: 0;
-    transform: translate3d(14px, 4px, 0);
-    clip-path: inset(0 0 0 18% round 14px);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-    clip-path: inset(0 0 0 0 round 14px);
-  }
-}
-@keyframes atelier-ai-enter {
-  from {
-    opacity: 0;
-    transform: translate3d(-12px, 4px, 0);
-    clip-path: inset(0 0 14% 0 round 10px);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-    clip-path: inset(0 0 0 0 round 10px);
-  }
+@keyframes atelier-turn-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 [data-style="atelier"] .msg-user {
   background: var(--atelier-user-bg);
-  border: 0;
-  border-radius: 16px 16px 5px 16px;
-  padding: 10px 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 12px 12px 4px 12px;
+  padding: 8px 14px;
   color: var(--fg);
-  box-shadow: var(--shadow-subtle), inset 0 1px 0 rgb(255 255 255 / 0.35);
 }
-[data-style="atelier"][data-theme="dark"] .msg-user {
-  box-shadow: var(--shadow-subtle), inset 0 1px 0 rgb(255 255 255 / 0.08);
-}
-
 [data-style="atelier"] .turn-rail-user,
 [data-style="atelier"] .turn-rail-tail {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 32%, transparent), transparent);
+  background: var(--line);
 }
-
-/* Organic dual-tone living pulse core (replaces simple ping ring) */
 [data-style="atelier"] .knot-dot {
-  width: 8px;
-  height: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--ok));
-  box-shadow: 0 0 0 3px var(--bg), 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg);
 }
 [data-style="atelier"] .knot-ping {
-  width: 20px;
-  height: 20px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 44%, transparent) 0%, color-mix(in srgb, var(--ok) 22%, transparent) 55%, transparent 74%);
-  animation: atelier-aura-pulse 2.4s var(--ease-silk-fluid) infinite;
+  width: 17px;
+  height: 17px;
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  animation: atelier-breathe 2.2s ease-in-out infinite;
 }
-@keyframes atelier-aura-pulse {
-  0%, 100% { transform: scale(0.75) rotate(0deg); opacity: 0.7; }
-  50% { transform: scale(1.48) rotate(90deg); opacity: 0.16; }
+@keyframes atelier-breathe {
+  0%, 100% { transform: scale(0.82); opacity: 0.55; }
+  50% { transform: scale(1.38); opacity: 0.14; }
 }
 
 [data-style="atelier"] .assistant-speaker {
@@ -512,17 +384,17 @@
   color: var(--fg-3);
 }
 
-/* Editorial warm typography */
+/* Editorial Markdown typography */
 [data-style="atelier"] .md-prose {
   font-size: var(--text-base);
-  line-height: 1.68;
+  line-height: 1.66;
 }
 [data-style="atelier"] .md-prose h1,
 [data-style="atelier"] .md-prose h2,
 [data-style="atelier"] .md-prose h3,
 [data-style="atelier"] .md-prose h4 {
   font-weight: 600;
-  letter-spacing: -0.018em;
+  letter-spacing: -0.015em;
 }
 [data-style="atelier"] .md-prose strong {
   font-weight: 600;
@@ -530,93 +402,72 @@
   color: var(--fg);
 }
 [data-style="atelier"] .md-prose blockquote {
-  border-left: 3px solid var(--accent);
+  border-left: 2.5px solid var(--accent);
   background: var(--sunken);
-  border-radius: 0 10px 10px 0;
-  padding: 8px 14px;
+  border-radius: 0 8px 8px 0;
+  padding: 6px 12px;
 }
 [data-style="atelier"] .md-prose :not(pre) > code {
   background: var(--raised);
-  color: var(--mark);
-  border: 0;
-  padding: 0.1em 0.42em;
-  border-radius: 6px;
+  border: 1px solid var(--line);
+  padding: 0.08em 0.38em;
+  border-radius: 5px;
   font-size: 0.85em;
 }
 [data-style="atelier"] .md-code-wrap {
   background: var(--atelier-code-bg);
-  border: 0;
-  border-radius: 12px;
-  box-shadow: var(--shadow-subtle);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 [data-style="atelier"] .md-code-head {
-  background: color-mix(in srgb, var(--raised) 64%, transparent);
-  border-bottom: 0;
+  background: color-mix(in srgb, var(--raised) 50%, transparent);
 }
 [data-style="atelier"] .md-copy-btn:hover {
   transform: none;
-  background: var(--panel);
-  color: var(--accent);
+  background: var(--raised);
 }
 [data-style="atelier"] .md-table-wrap {
-  border-radius: 12px;
-  border: 0;
+  border-radius: 10px;
   background: var(--card);
-  box-shadow: var(--shadow-subtle);
 }
 [data-style="atelier"] .md-table th {
   font-weight: 600;
-  background: var(--sunken);
 }
 
-/* ── Composer: Floating Tonal Surface + Dual-Tone Silk Aurora Flow ──────── */
-
+/* Composer — clean architectural floating surface + silk shimmer */
 [data-style="atelier"] .composer-box {
   background: var(--panel);
-  border: 0;
-  border-radius: 16px;
-  padding: 11px 14px 9px;
-  box-shadow: var(--shadow-ambient), var(--atelier-top-sheen);
-  transition: box-shadow 280ms var(--ease-silk-fluid), transform 240ms var(--ease-silk-fluid);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 10px 13px 8px;
+  box-shadow: 0 2px 10px -4px rgb(15 20 30 / 0.08);
+  transition: border-color 180ms var(--ease-atelier), box-shadow 220ms var(--ease-atelier);
 }
 [data-style="atelier"] .composer-box:focus-within {
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--accent) 34%, transparent),
-    0 16px 36px -14px color-mix(in srgb, var(--accent) 28%, transparent),
-    var(--atelier-top-sheen);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent), 0 6px 18px -8px rgb(15 20 30 / 0.12);
 }
 [data-style="atelier"] .composer-scan {
-  left: 0;
-  right: 0;
+  left: 14px;
+  right: 14px;
   top: 0;
-  height: 2.5px;
-  border-radius: 16px 16px 0 0;
-  overflow: hidden;
+  height: 2px;
 }
 [data-style="atelier"] .composer-scan-bar {
-  width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent) 25%,
-    var(--ok) 50%,
-    var(--accent) 75%,
-    transparent 100%
-  );
-  background-size: 220% 100%;
-  animation: atelier-aurora-flow 2.1s linear infinite;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: atelier-shimmer 1.8s var(--ease-atelier) infinite;
 }
-@keyframes atelier-aurora-flow {
-  0% { background-position: 100% 0; }
-  100% { background-position: -120% 0; }
+@keyframes atelier-shimmer {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(340%); }
 }
 
-/* ── Right Inspector (borderless warm/indigo tonal surface) ─────────────── */
-
+/* Right Inspector */
 [data-style="atelier"] .inspector {
-  background: linear-gradient(180deg, var(--atelier-inspector) 0%, color-mix(in srgb, var(--atelier-inspector) 86%, var(--bg)) 100%);
-  border: 0;
+  background: var(--atelier-inspector);
   border-image: none;
+  border-left: 1px solid var(--line);
 }
 [data-style="atelier"] .inspector-section {
   border-image: none;
@@ -624,46 +475,28 @@
 }
 [data-style="atelier"] .stat-grid {
   background: var(--panel);
-  border: 0;
-  border-radius: 12px;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 [data-style="atelier"] .cache-meter {
-  height: 5px;
+  height: 4px;
   background: var(--raised);
-  border-radius: 99px;
-  overflow: hidden;
 }
 [data-style="atelier"] .cache-meter-fill {
-  position: relative;
-  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 68%, var(--accent)));
-  transition: width 480ms var(--ease-silk-fluid);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 72%, var(--accent)), var(--ok));
+  transition: width 380ms var(--ease-atelier);
 }
-[data-style="atelier"] .cache-meter-fill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.42), transparent);
-  animation: atelier-meter-glint 3.2s ease-in-out infinite;
-}
-@keyframes atelier-meter-glint {
-  0% { transform: translateX(-120%); }
-  60%, 100% { transform: translateX(220%); }
-}
-
 [data-style="atelier"] .model-meta-box {
   background: var(--panel);
-  border: 0;
-  border-radius: 12px;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 [data-style="atelier"] .file-row {
-  border-radius: 8px;
-  transition: background-color 160ms var(--ease-silk-fluid), color 160ms var(--ease-silk-fluid), padding-left 200ms var(--ease-silk-fluid);
+  border-radius: 7px;
+  transition: background-color 140ms var(--ease-atelier), color 140ms var(--ease-atelier);
 }
 [data-style="atelier"] .file-row:hover {
   transform: none;
-  padding-left: 10px;
   background: color-mix(in srgb, var(--raised) 80%, transparent);
 }
 [data-style="atelier"] .file-row.active {
@@ -671,166 +504,124 @@
   color: var(--accent);
 }
 [data-style="atelier"] .file-ref-btn {
-  transform: translateX(4px);
-  transition: opacity 150ms var(--ease-silk-fluid), transform 200ms var(--ease-silk-fluid), background-color 150ms;
+  transform: translateX(3px);
+  transition: opacity 140ms var(--ease-atelier), transform 160ms var(--ease-atelier), background-color 140ms;
 }
 [data-style="atelier"] .file-row-wrap:hover .file-ref-btn,
 [data-style="atelier"] .file-ref-btn:focus-visible {
   transform: translateX(0);
 }
 [data-style="atelier"] .file-ref-btn:hover {
-  background: var(--accent-soft);
-  color: var(--accent);
+  transform: scale(1.04);
 }
 
-/* ── Cards, Fields, Tags, Modals, Toasts ────────────────────────────────── */
-
+/* Cards, fields, tags, modals */
 [data-style="atelier"] .card-section {
   background: var(--panel);
-  border: 0;
-  border-radius: 15px;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  transition: box-shadow 260ms var(--ease-silk-fluid);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-subtle);
 }
-[data-style="atelier"] .card-section:hover {
-  box-shadow: var(--shadow-ambient), var(--atelier-top-sheen);
-}
-
 [data-style="atelier"] .page-title {
-  font-weight: 650;
-  letter-spacing: -0.022em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
-
 [data-style="atelier"] .field {
-  border: 0;
-  border-radius: 10px;
-  background: var(--sunken);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.04);
-  transition: background-color 180ms var(--ease-silk-fluid), box-shadow 220ms var(--ease-silk-fluid);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--field);
+  transition: border-color 160ms var(--ease-atelier), box-shadow 180ms var(--ease-atelier);
 }
 [data-style="atelier"] .field:focus-visible {
+  border-color: var(--accent);
   background: var(--field);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent), var(--shadow-subtle);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
-
 [data-style="atelier"] .tag {
-  border-radius: 7px;
+  border-radius: 6px;
   font-weight: 500;
-  border: 0;
 }
 [data-style="atelier"] .tag.mark {
   background: var(--accent-soft);
   color: var(--accent);
 }
-
 [data-style="atelier"] .modal-backdrop {
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
-  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 [data-style="atelier"] .modal-card {
-  border-radius: 20px;
-  border: 0;
-  background: var(--panel);
-  box-shadow: var(--shadow-pop), var(--atelier-top-sheen);
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-pop);
 }
 [data-style="atelier"] .toast {
-  border-radius: 12px;
-  border: 0;
-  background: var(--panel);
-  box-shadow: var(--shadow-pop), var(--atelier-top-sheen);
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
   font-weight: 500;
 }
 
-/* Segmented control: borderless sunken track + warm floating capsule */
+/* Segmented control override for Atelier */
 [data-style="atelier"] .seg-group {
   border-image: none;
-  border: 0;
+  border: 1px solid var(--line);
   background: var(--sunken);
-  border-radius: 11px;
-  padding: 3px;
+  border-radius: 9px;
 }
 [data-style="atelier"] .seg-pill {
   background: var(--atelier-pill-bg);
-  border: 0;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-subtle);
+  border-radius: 6px;
 }
 [data-style="atelier"] .seg-pill.glide {
-  transition: translate 320ms var(--ease-silk-fluid), width 320ms var(--ease-silk-fluid);
+  transition: translate 260ms var(--ease-atelier), width 260ms var(--ease-atelier);
 }
 [data-style="atelier"] .seg-btn {
   font-weight: 500;
 }
-[data-style="atelier"] .seg-btn.active {
-  color: var(--accent);
-}
 
-/* Slash menu & @ file autocomplete */
+/* Slash menu & autocomplete */
 [data-style="atelier"] .slash-menu {
-  border-radius: 14px;
-  border: 0;
-  background: var(--panel);
-  box-shadow: var(--shadow-pop), var(--atelier-top-sheen);
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
 }
 [data-style="atelier"] .slash-item {
-  border-radius: 9px;
-  transition: background-color 140ms var(--ease-silk-fluid), transform 180ms var(--ease-silk-fluid);
+  border-radius: 8px;
+  transition: background-color 120ms var(--ease-atelier);
 }
 [data-style="atelier"] .slash-item.focused,
 [data-style="atelier"] .slash-item:hover {
   background: var(--accent-soft);
-  color: var(--fg);
-  transform: translateX(3px);
+  transform: none;
 }
 
-/* Starter chips: floating warm cards with silk lift */
+/* Starter chips */
 [data-style="atelier"] .starter-chip {
   background: var(--panel);
-  border: 0;
-  border-radius: 12px;
-  box-shadow: var(--shadow-subtle), var(--atelier-top-sheen);
-  transition: transform 240ms var(--ease-silk-fluid), background-color 200ms var(--ease-silk-fluid), box-shadow 260ms var(--ease-silk-fluid), color 180ms;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-subtle);
 }
 [data-style="atelier"] .starter-chip:hover {
-  transform: translateY(-2px);
   background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--accent);
-  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
-/* ── Parallax Cross-Dissolve View Transitions (zero blur, horizontal glide) ─ */
-
+/* Atelier clean View Transitions (crisp cross-dissolve, zero blur haze) */
 [data-style="atelier"]::view-transition-group(main-view) {
-  animation-duration: 280ms;
-  animation-timing-function: var(--ease-silk-fluid);
+  animation-duration: 210ms;
+  animation-timing-function: var(--ease-atelier);
 }
 [data-style="atelier"]::view-transition-old(main-view) {
-  animation: atelier-vt-out 130ms ease-in both;
+  animation: atelier-vt-out 100ms ease-in both;
 }
 [data-style="atelier"]::view-transition-new(main-view) {
-  animation: atelier-vt-in 260ms var(--ease-silk-fluid) both;
+  animation: atelier-vt-in 190ms var(--ease-atelier) both;
 }
 @keyframes atelier-vt-out {
-  to {
-    opacity: 0;
-    transform: translate3d(-10px, 0, 0);
-  }
+  to { opacity: 0; }
 }
 @keyframes atelier-vt-in {
-  from {
-    opacity: 0;
-    transform: translate3d(14px, 0, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-style="atelier"] .btn-primary::after,
-  [data-style="atelier"] .cache-meter-fill::after,
-  [data-style="atelier"] .composer-scan-bar,
-  [data-style="atelier"] .knot-ping,
-  [data-style="atelier"] .turn-user,
-  [data-style="atelier"] .turn-assistant {
-    animation: none !important;
-    transition: none !important;
-  }
+  from { opacity: 0; transform: translate3d(0, 3px, 0); }
 }

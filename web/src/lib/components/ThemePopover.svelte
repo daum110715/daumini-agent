@@ -17,28 +17,6 @@
 
   let open = $state(false);
   let rootEl = $state<HTMLDivElement | null>(null);
-  let triggerEl = $state<HTMLButtonElement | null>(null);
-  let menuTop = $state(52);
-  let menuLeft = $state(12);
-
-  function updatePosition() {
-    if (!triggerEl || typeof window === 'undefined') return;
-    const rect = triggerEl.getBoundingClientRect();
-    const menuW = 280;
-    const pad = 10;
-    let left = rect.left;
-    if (left + menuW > window.innerWidth - pad) {
-      left = Math.max(pad, window.innerWidth - menuW - pad);
-    }
-    if (left < pad) left = pad;
-    menuLeft = Math.round(left);
-    menuTop = Math.round(rect.bottom + 8);
-  }
-
-  function toggleOpen() {
-    if (!open) updatePosition();
-    open = !open;
-  }
 
   function handleWindowClick(e: MouseEvent) {
     if (!open || !rootEl) return;
@@ -53,18 +31,17 @@
   }
 </script>
 
-<svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} onresize={() => open && updatePosition()} />
+<svelte:window onclick={handleWindowClick} onkeydown={handleKeydown} />
 
 <div class="tp-wrap" bind:this={rootEl}>
   <button
-    bind:this={triggerEl}
     type="button"
     class="wobble btn btn-icon btn-ghost tp-trigger"
     class:active={open}
     title="外观与主题"
     aria-label="外观与主题"
     aria-expanded={open}
-    onclick={toggleOpen}
+    onclick={() => (open = !open)}
   >
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
@@ -80,8 +57,6 @@
       class="tp-menu border-line-strong"
       role="dialog"
       aria-label="外观主题设置"
-      style:top="{menuTop}px"
-      style:left="{menuLeft}px"
       in:pop={{ y: -6, start: 0.96, blur: 4, duration: 200 }}
       out:popOut={{ y: -4, duration: 120 }}
     >
@@ -145,13 +120,15 @@
   }
 
   .tp-menu {
-    position: fixed;
-    width: 280px;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 276px;
     padding: 10px;
     border-radius: 12px;
     background: var(--panel);
     box-shadow: var(--shadow-pop);
-    z-index: 220;
+    z-index: 75;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -266,38 +243,5 @@
     font-size: var(--text-xs);
     color: var(--fg-3);
     line-height: 1.4;
-  }
-
-  /* Atelier borderless tonal popover */
-  :global([data-style="atelier"]) .tp-menu {
-    border: 0;
-    border-radius: 16px;
-    padding: 12px;
-  }
-  :global([data-style="atelier"]) .tp-mode-row {
-    border: 0;
-    border-radius: 9px;
-    padding: 3px;
-  }
-  :global([data-style="atelier"]) .tp-mode-btn.selected {
-    color: var(--accent);
-    box-shadow: var(--shadow-subtle);
-  }
-  :global([data-style="atelier"]) .tp-pack {
-    border: 0;
-    border-radius: 11px;
-    padding: 10px 11px;
-  }
-  :global([data-style="atelier"]) .tp-pack:hover {
-    transform: translateX(2px);
-  }
-  :global([data-style="atelier"]) .tp-pack.selected {
-    background: var(--accent-soft);
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-  :global([data-style="atelier"]) .tp-motion-tag {
-    border: 0;
-    background: var(--panel);
-    color: var(--accent);
   }
 </style>
