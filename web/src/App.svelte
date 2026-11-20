@@ -7,10 +7,10 @@
   import { renderMarkdown } from './lib/markdown';
   import { dialogIn, drawerIn, drawerOut, pop, popOut, turnIn } from './lib/motion';
   import Collapsible from './lib/components/Collapsible.svelte';
+  import DauminiModelCatalog from './lib/components/DauminiModelCatalog.svelte';
   import GenerationInspectorModal from './lib/components/GenerationInspectorModal.svelte';
   import ModelPicker from './lib/components/ModelPicker.svelte';
   import Picker from './lib/components/Picker.svelte';
-  import PlatformView from './lib/components/PlatformView.svelte';
   import Segmented from './lib/components/Segmented.svelte';
   import ThemePopover from './lib/components/ThemePopover.svelte';
   import Wordmark from './lib/components/Wordmark.svelte';
@@ -19,7 +19,7 @@
 
   const ctrl = new AgentController();
 
-  type MainTab = 'work' | 'platform' | 'providers' | 'extensions';
+  type MainTab = 'work' | 'providers' | 'extensions';
   let tab = $state<MainTab>('work');
   let showInspector = $state(true);
   let promptText = $state('');
@@ -73,8 +73,7 @@
   // Gliding marker for sidebar navigation
   const navItems: { id: MainTab; label: string }[] = [
     { id: 'work', label: '工作台' },
-    { id: 'platform', label: '平台' },
-    { id: 'providers', label: '渠道' },
+    { id: 'providers', label: '模型' },
     { id: 'extensions', label: '扩展' }
   ];
   let navButtons = $state<HTMLButtonElement[]>([]);
@@ -283,12 +282,11 @@
   const allSlashCommands: SlashCommand[] = [
     { cmd: '/new', label: '/new', desc: '在当前目录新建会话', run: () => void handleQuickNewSession() },
     { cmd: '/workspace', label: '/workspace', desc: '图形化选择工作区目录', run: () => (workspaceModal = { open: true, mode: 'switch' }) },
-    { cmd: '/platform', label: '/platform', desc: '打开平台路由费用与模型市场', run: () => switchTab('platform') },
+    { cmd: '/models', label: '/models', desc: '查看在线模型与路由定价', run: () => switchTab('providers') },
     { cmd: '/style', label: '/style', desc: '切换静谧工作台与手绘白板主题', run: () => withTransition(() => ctrl.setUIStyle(ctrl.uiStyle === 'atelier' ? 'sketch' : 'atelier')) },
     { cmd: '/theme', label: '/theme', desc: '切换浅色深色模式', run: () => withTransition(() => ctrl.toggleTheme()) },
     { cmd: '/fork', label: '/fork', desc: '分叉当前会话', run: () => void ctrl.forkSession(0) },
     { cmd: '/login', label: '/login', desc: '一键授权登录 daumini', run: () => void triggerOneClickOAuth() },
-    { cmd: '/providers', label: '/providers', desc: '管理模型渠道', run: () => switchTab('providers') },
     { cmd: '/extensions', label: '/extensions', desc: '查看 MCP 技能与诊断', run: () => switchTab('extensions') }
   ];
 
@@ -334,6 +332,16 @@
     return hasAttachedMsg ? null : last;
   });
 
+  const sessionGenerations = $derived.by(() => {
+    const list: { id: string; model: string; usage: Usage }[] = [];
+    for (const m of ctrl.current?.messages ?? []) {
+      if (m.role === 'assistant' && m.provider_id === 'daumini' && m.usage?.generation_id?.startsWith('gen_')) {
+        list.push({ id: m.usage.generation_id, model: m.model_id || '', usage: m.usage });
+      }
+    }
+    return list.reverse().slice(0, 6);
+  });
+
   const starters = ['梳理当前项目结构', '检查最近代码改动', '帮我定位并修复问题'];
 
   function withTransition(fn: () => void) {
@@ -357,6 +365,8 @@
     dmErr = '';
     dmOk = '';
     showLoginModal = true;
+    void ctrl.loadDauminiStatus().catch(() => {});
+    void ctrl.loadDauminiLedger().catch(() => {});
   }
 
   async function triggerOneClickOAuth() {
@@ -724,8 +734,6 @@
         >
           {#if item.id === 'work'}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          {:else if item.id === 'platform'}
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
           {:else if item.id === 'providers'}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
           {:else}
@@ -859,8 +867,8 @@
           <button
             type="button"
             class="account-info"
-            title="打开平台中心查看路由与费用"
-            onclick={() => switchTab('platform')}
+            title="查看账号状态与累计用量"
+            onclick={() => openLoginModal('oauth')}
           >
             <span class="status-dot" title="daumini 已连接"></span>
             <span class="account-email" title={dauminiProvider?.user_email || 'daumini 已连接'}>
@@ -960,6 +968,8 @@
               fallbackIds={currentFallbackModels}
               value={ctrl.current.meta.model_id}
               loading={Boolean(ctrl.loadingModels[ctrl.current.meta.provider_id])}
+              currency={ctrl.currency}
+              cnyRate={ctrl.cnyRate}
               onChange={(mid) => void ctrl.updateSession({ model_id: mid })}
               onRefresh={() => ctrl.current && void ctrl.fetchProviderModels(ctrl.current.meta.provider_id).catch((e) => (ctrl.error = String(e)))}
             />
@@ -1424,8 +1434,14 @@
                     <button
                       type="button"
                       class="usage-link-btn"
-                      title="查看平台账单与路由"
-                      onclick={() => switchTab('platform')}
+                      title={sessionGenerations.length ? '查看最近一次路由与费用' : '切换美元或人民币'}
+                      onclick={() => {
+                        if (sessionGenerations.length > 0) {
+                          inspectGenerationId = sessionGenerations[0].id;
+                        } else {
+                          ctrl.setCurrency(ctrl.currency === 'USD' ? 'CNY' : 'USD');
+                        }
+                      }}
                     >
                       {ctrl.formatNUSD(ctrl.current.meta.total_usage.total_cost_nusd, 4)}
                     </button>
@@ -1453,16 +1469,6 @@
         </div>
       </div>
 
-    {:else if tab === 'platform'}
-      <PlatformView
-        {ctrl}
-        onInspectGeneration={(id) => (inspectGenerationId = id)}
-        onSelectModel={(mid) => void handlePlatformSelectModel(mid)}
-        onSetDefaultModel={(mid) => void handlePlatformSetDefaultModel(mid)}
-        onOpenLogin={() => openLoginModal('oauth')}
-        onTriggerOAuth={() => void triggerOneClickOAuth()}
-      />
-
     {:else if tab === 'providers'}
       <div class="page-scroll">
         <div class="page-container">
@@ -1475,6 +1481,18 @@
             >
               {dauminiConnected ? '管理 daumini 账号' : '一键登录 daumini'}
             </button>
+          </div>
+
+          <div class="card-section border-line">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <span style="font-size: var(--text-lg);">daumini 在线模型与路由定价</span>
+              <span style="font-size: var(--text-xs); color: var(--fg-3);">缓存读价格优先 展开可查看上游路由端点</span>
+            </div>
+            <DauminiModelCatalog
+              {ctrl}
+              onSelectModel={(mid) => void handlePlatformSelectModel(mid)}
+              onSetDefaultModel={(mid) => void handlePlatformSetDefaultModel(mid)}
+            />
           </div>
 
           <div class="card-section border-line">
@@ -1644,7 +1662,14 @@
         <div class="inspector-head">
           <span>缓存与用量</span>
           <div style="display: flex; align-items: center; gap: 6px;">
-            <button type="button" class="usage-link-btn" onclick={() => switchTab('platform')}>账单</button>
+            <button
+              type="button"
+              class="usage-link-btn tnum"
+              title="切换美元或人民币"
+              onclick={() => ctrl.setCurrency(ctrl.currency === 'USD' ? 'CNY' : 'USD')}
+            >
+              {ctrl.currency === 'USD' ? '$' : '¥'}
+            </button>
             <span class="tnum marked" style="font-size: var(--text-sm);">{cachePct(ctrl.current.meta.total_usage)}</span>
           </div>
         </div>
@@ -1688,6 +1713,23 @@
                 输入 {ctrl.formatPricePerM(activeModelInfo.input_nusd_per_million)} · 输出 {ctrl.formatPricePerM(activeModelInfo.output_nusd_per_million)} / M
               </div>
             {/if}
+          </div>
+        {/if}
+        {#if sessionGenerations.length > 0}
+          <div class="gen-mini-list">
+            <div class="gen-mini-head">最近路由与费用</div>
+            {#each sessionGenerations.slice(0, 4) as g (g.id)}
+              <button
+                type="button"
+                class="gen-mini-row"
+                onclick={() => (inspectGenerationId = g.id)}
+              >
+                <span class="gen-mini-hit tnum">{cachePct(g.usage)}</span>
+                <span class="gen-mini-cost tnum">{ctrl.formatNUSD(g.usage.total_cost_nusd, 4)}</span>
+                <span class="gen-mini-lat tnum">{g.usage.latency_ms ? `${(g.usage.latency_ms / 1000).toFixed(1)}s` : ''}</span>
+                <span class="gen-mini-act">明细</span>
+              </button>
+            {/each}
           </div>
         {/if}
       </div>
@@ -1835,9 +1877,65 @@
 
       {#if loginMode === 'oauth'}
         <div style="display: flex; flex-direction: column; gap: 12px;">
-          <div style="font-size: var(--text-sm); color: var(--fg-2); line-height: 1.65;">
-            跳转至 <span class="marked">{dmBase}</span> 确认授权 复用浏览器已有登录态并自动签发专属密钥
-          </div>
+          {#if dauminiConnected}
+            <div class="acc-summary">
+              <div class="acc-summary-top">
+                <div style="display: flex; align-items: center; gap: 7px; min-width: 0;">
+                  <span class="status-dot"></span>
+                  <span class="acc-email">{dauminiProvider?.user_email || 'daumini 已授权'}</span>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-quiet border-line"
+                  onclick={() => ctrl.setCurrency(ctrl.currency === 'USD' ? 'CNY' : 'USD')}
+                >
+                  {ctrl.currency === 'USD' ? 'USD $' : 'CNY ¥'}
+                </button>
+              </div>
+              {#if ctrl.dauminiStatus?.key?.workspace_id}
+                <div class="acc-meta-line">工作空间 {ctrl.dauminiStatus.key.workspace_id}</div>
+              {/if}
+              {#if ctrl.dauminiLedger}
+                <div class="acc-kpi-row tnum">
+                  <div>
+                    <span>全局缓存</span>
+                    <strong class="ok">{Math.round(ctrl.dauminiLedger.cache_hit_ratio * 100)}%</strong>
+                  </div>
+                  <div>
+                    <span>累计费用</span>
+                    <strong>{ctrl.formatNUSD(ctrl.dauminiLedger.totals.total_cost_nusd, 4)}</strong>
+                  </div>
+                  <div>
+                    <span>调用次数</span>
+                    <strong>{ctrl.dauminiLedger.request_count}</strong>
+                  </div>
+                </div>
+                {#if ctrl.dauminiLedger.recent.filter((r) => r.provider_id === 'daumini' && r.generation_id?.startsWith('gen_')).length > 0}
+                  <div class="acc-recent">
+                    {#each ctrl.dauminiLedger.recent.filter((r) => r.provider_id === 'daumini' && r.generation_id?.startsWith('gen_')).slice(0, 3) as item (item.message_id)}
+                      <button
+                        type="button"
+                        class="gen-mini-row"
+                        onclick={() => {
+                          showLoginModal = false;
+                          inspectGenerationId = item.generation_id || null;
+                        }}
+                      >
+                        <span class="acc-recent-model">{item.model_id}</span>
+                        <span class="gen-mini-hit tnum">{cachePct(item.usage)}</span>
+                        <span class="gen-mini-cost tnum">{ctrl.formatNUSD(item.usage.total_cost_nusd, 4)}</span>
+                        <span class="gen-mini-act">路由</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              {/if}
+            </div>
+          {:else}
+            <div style="font-size: var(--text-sm); color: var(--fg-2); line-height: 1.65;">
+              跳转至 <span class="marked">{dmBase}</span> 确认授权 复用浏览器已有登录态并自动签发专属密钥
+            </div>
+          {/if}
           {#if dmShowBase}
             <div class="field-col">
               <span class="field-label">中转地址</span>
@@ -1856,7 +1954,7 @@
             disabled={dmBusy}
             onclick={() => void triggerOneClickOAuth()}
           >
-            {dmBusy ? '正在跳转授权' : '前往 daumini 一键授权'}
+            {dmBusy ? '正在跳转授权' : (dauminiConnected ? '重新授权或切换账号' : '前往 daumini 一键授权')}
           </button>
           {#if dauminiConnected}
             <button

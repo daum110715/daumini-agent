@@ -9,6 +9,8 @@
     value,
     loading = false,
     disabled = false,
+    currency = 'USD',
+    cnyRate = 7.25,
     onChange,
     onRefresh
   }: {
@@ -17,6 +19,8 @@
     value: string;
     loading?: boolean;
     disabled?: boolean;
+    currency?: 'USD' | 'CNY';
+    cnyRate?: number;
     onChange: (id: string) => void;
     onRefresh?: () => void;
   } = $props();
@@ -61,7 +65,9 @@
   function fmtPrice(nusdPerMillion?: number): string {
     if (!nusdPerMillion || nusdPerMillion <= 0) return '';
     const usd = nusdPerMillion / 1e9;
-    return usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
+    const val = currency === 'CNY' ? usd * cnyRate : usd;
+    const sym = currency === 'CNY' ? '¥' : '$';
+    return val >= 0.01 ? `${sym}${val.toFixed(2)}` : `${sym}${val.toFixed(3)}`;
   }
 
   function fmtCtx(n?: number): string {
