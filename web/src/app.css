@@ -771,6 +771,11 @@ a:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.session-meta span:last-child {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .session-inline-box {
   padding: 6px 8px;
@@ -1102,6 +1107,42 @@ a:hover {
   border-radius: 4px;
   background: var(--raised);
   color: var(--fg);
+}
+.md-table-wrap {
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.md-table th,
+.md-table td {
+  padding: 4px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.md-table td:last-child {
+  white-space: normal;
+}
+.md-table th {
+  background: var(--sunken);
+  color: var(--fg-2);
+  font-weight: 400;
+}
+.md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.md-table tbody tr {
+  transition: background-color 120ms var(--ease-out);
+}
+.md-table tbody tr:hover {
+  background: var(--raised);
 }
 .md-hr {
   border: none;

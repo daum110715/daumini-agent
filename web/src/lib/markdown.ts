@@ -56,7 +56,37 @@ export function renderMarkdown(md: string): string {
     listType = null;
   };
 
-  for (const line of lines) {
+  const splitRow = (row: string): string[] => {
+    let s = row.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map((c) => c.trim());
+  };
+  const isSepRow = (row: string): boolean => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(row);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!inCode && line.includes('|') && i + 1 < lines.length && isSepRow(lines[i + 1])) {
+      flushPara();
+      flushList();
+      const head = splitRow(line);
+      const aligns = splitRow(lines[i + 1]).map((c) =>
+        c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : ''
+      );
+      const cell = (tag: string, txt: string, idx: number) =>
+        `<${tag}${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ''}>${renderInline(txt)}</${tag}>`;
+      const rows: string[] = [];
+      i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+        rows.push(`<tr>${splitRow(lines[i]).map((c, idx) => cell('td', c, idx)).join('')}</tr>`);
+        i++;
+      }
+      i--;
+      out.push(
+        `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head.map((c, idx) => cell('th', c, idx)).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      );
+      continue;
+    }
     const fence = line.match(/^```([a-zA-Z0-9_+-]*)\s*$/);
     if (fence) {
       if (inCode) {
